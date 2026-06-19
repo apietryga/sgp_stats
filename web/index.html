@@ -1,0 +1,278 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SGP Elo — Speedway Grand Prix 1995–2026</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #21262d; --fg: #e6edf3;
+    --muted: #7d8590; --accent: #d29922; --hi: #2f81f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 -apple-system, system-ui, sans-serif; }
+  header { padding: 18px 22px 10px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+    padding: 12px 22px; border-bottom: 1px solid var(--line); }
+  input[type="text"] { background: var(--panel); border: 1px solid var(--line);
+    color: var(--fg); padding: 6px 10px; border-radius: 6px; min-width: 200px; font: inherit; }
+  label.toggle { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .count { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .timebar { display: flex; gap: 14px; align-items: center; padding: 12px 22px;
+    border-bottom: 1px solid var(--line); }
+  .timebar .lbl { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .timebar .date { font-family: ui-monospace, Menlo, monospace; color: var(--accent);
+    min-width: 96px; font-size: 13px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; min-width: 160px; }
+  button.mini { background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+    border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+  button.mini:hover { border-color: var(--muted); }
+  .live { color: var(--muted); font-size: 12px; }
+  .live.on { color: #3fb950; }
+
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--bg); cursor: pointer; user-select: none;
+    font-weight: 600; color: var(--muted); }
+  th.sorted { color: var(--fg); }
+  th .arrow { color: var(--accent); }
+  td.num, th.num { text-align: right; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  tr.rider-row:hover { background: var(--panel); cursor: pointer; }
+  tr.rider-row.open { background: #1c2333; }
+  .rank-col { color: var(--muted); }
+  .detail td { background: var(--panel); }
+  .chart-box { padding: 10px 4px; }
+  .chart-title { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  svg { display: block; max-width: 100%; }
+  .axis { stroke: var(--line); }
+  .gridtext { fill: var(--muted); font: 10px ui-monospace, monospace; }
+  .line { fill: none; stroke: var(--hi); stroke-width: 1.5; }
+  .peak { fill: var(--accent); }
+  .asof { stroke: var(--accent); stroke-dasharray: 3 3; }
+  .asofdot { fill: var(--accent); }
+</style>
+
+<header>
+  <h1>SGP Elo Ranking</h1>
+  <div class="sub">Speedway Grand Prix heat-by-heat Elo · 1995–2026 · drag the slider to see the ranking at any date · click a rider for their curve</div>
+</header>
+
+<div class="controls">
+  <input id="filter" type="text" placeholder="filter by name…" autocomplete="off" />
+  <label class="toggle"><input id="min50" type="checkbox" /> only ≥50 heats</label>
+  <span class="count" id="count"></span>
+</div>
+
+<div class="timebar">
+  <span class="lbl">Elo as of</span>
+  <span class="date" id="date">—</span>
+  <input id="time" type="range" min="0" max="0" value="0" step="1" />
+  <button class="mini" id="latest">Latest</button>
+  <span class="live" id="live"></span>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr id="head"></tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+</div>
+
+<script>
+  // Static, server-free: all data comes from prepared JSON next to this page.
+  const COLS = [
+    { key: "rider", label: "Rider", num: false },
+    { key: "elo", label: "Elo", num: true, asof: true },
+    { key: "heats", label: "Heats", num: true, asof: true },
+    { key: "peak_elo", label: "Peak", num: true },
+    { key: "peak_date", label: "Peak date", num: false },
+    { key: "win_rate", label: "Win%", num: true },
+    { key: "first_season", label: "From", num: true },
+    { key: "last_season", label: "To", num: true },
+  ];
+
+  let ranking = [];          // career rows from ranking.json
+  let hist = {};             // rider -> [[date, elo, heats], ...]
+  let dates = [];            // global sorted distinct race dates (slider stops)
+  let idx = 0;               // current slider index
+  let rows = [];             // merged rows for the selected date
+  let sortKey = "elo", sortDir = -1, openRider = null;
+
+  const $ = (id) => document.getElementById(id);
+  const isLatest = () => idx === dates.length - 1;
+
+  // last history point with date <= target (binary search), or null if pre-debut
+  function asOf(points, target) {
+    let lo = 0, hi = points.length - 1, ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid][0] <= target) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return ans < 0 ? null : points[ans];
+  }
+
+  function rebuild() {
+    const target = dates[idx];
+    $("date").textContent = target || "—";
+    $("live").textContent = isLatest() ? "live (latest)" : "historical";
+    $("live").className = "live" + (isLatest() ? " on" : "");
+    rows = [];
+    for (const r of ranking) {
+      const p = hist[r.rider] ? asOf(hist[r.rider], target) : null;
+      if (!p) continue;                 // rider had not debuted by this date
+      rows.push({ ...r, elo: p[1], heats: p[2] });
+    }
+    render();
+  }
+
+  function renderHead() {
+    const tr = $("head");
+    tr.innerHTML = "";
+    for (const c of COLS) {
+      const th = document.createElement("th");
+      let label = c.label;
+      if (c.asof && !isLatest()) label += " @date";
+      th.textContent = label;
+      if (c.num) th.className = "num";
+      if (c.key === sortKey) {
+        th.classList.add("sorted");
+        th.innerHTML += ' <span class="arrow">' + (sortDir === 1 ? "▲" : "▼") + "</span>";
+      }
+      th.onclick = () => {
+        if (sortKey === c.key) sortDir = -sortDir;
+        else { sortKey = c.key; sortDir = c.num ? -1 : 1; }
+        render();
+      };
+      tr.appendChild(th);
+    }
+  }
+
+  function visibleRows() {
+    const q = $("filter").value.trim().toLowerCase();
+    const min50 = $("min50").checked;
+    const out = rows.filter((r) => {
+      if (min50 && r.heats < 50) return false;
+      if (q && !r.rider.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    out.sort((a, b) => {
+      const x = a[sortKey], y = b[sortKey];
+      const c = typeof x === "string" ? x.localeCompare(y) : x - y;
+      return c * sortDir;
+    });
+    return out;
+  }
+
+  function fmt(col, v) {
+    if (v === undefined || v === null) return "";
+    if (col.key === "win_rate") return (v * 100).toFixed(1);
+    return v;
+  }
+
+  function render() {
+    renderHead();
+    const vis = visibleRows();
+    $("count").textContent = vis.length + " / " + rows.length + " riders";
+    const body = $("body");
+    body.innerHTML = "";
+    vis.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      tr.className = "rider-row" + (r.rider === openRider ? " open" : "");
+      tr.onclick = () => toggle(r.rider);
+      for (const c of COLS) {
+        const td = document.createElement("td");
+        if (c.num) td.className = "num";
+        if (c.key === "rider") {
+          td.innerHTML = '<span class="rank-col">' + (i + 1) + ".</span> " + escapeHtml(r.rider);
+        } else td.textContent = fmt(c, r[c.key]);
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+      if (r.rider === openRider) body.appendChild(detailRow(r));
+    });
+  }
+
+  function detailRow(r) {
+    const tr = document.createElement("tr");
+    tr.className = "detail";
+    const td = document.createElement("td");
+    td.colSpan = COLS.length;
+    const box = document.createElement("div");
+    box.className = "chart-box";
+    drawChart(box, r, hist[r.rider] || []);
+    td.appendChild(box);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function toggle(rider) { openRider = openRider === rider ? null : rider; render(); }
+
+  function drawChart(box, r, pts) {
+    if (!pts.length) { box.innerHTML = '<div class="chart-title">no history</div>'; return; }
+    const W = 760, H = 200, padL = 44, padR = 12, padT = 12, padB = 22;
+    const ys = pts.map((p) => p[1]);
+    const minY = Math.min(1400, Math.min(...ys) - 10);
+    const maxY = Math.max(1600, Math.max(...ys) + 10);
+    const sx = (i) => padL + (i / Math.max(1, pts.length - 1)) * (W - padL - padR);
+    const sy = (v) => padT + (1 - (v - minY) / (maxY - minY)) * (H - padT - padB);
+    let d = "";
+    pts.forEach((p, i) => { d += (i ? "L" : "M") + sx(i).toFixed(1) + " " + sy(p[1]).toFixed(1) + " "; });
+    let grid = "";
+    for (let g = 0; g <= 4; g++) {
+      const v = minY + (g / 4) * (maxY - minY);
+      const y = sy(v);
+      grid += '<line class="axis" x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '"/>';
+      grid += '<text class="gridtext" x="4" y="' + (y + 3).toFixed(1) + '">' + Math.round(v) + "</text>";
+    }
+    let peakIdx = 0;
+    ys.forEach((v, i) => { if (v > ys[peakIdx]) peakIdx = i; });
+    const peak = '<circle class="peak" cx="' + sx(peakIdx).toFixed(1) + '" cy="' + sy(ys[peakIdx]).toFixed(1) + '" r="3"/>';
+    // as-of marker: last point on/before the selected date
+    const target = dates[idx];
+    let aIdx = -1;
+    for (let i = 0; i < pts.length; i++) { if (pts[i][0] <= target) aIdx = i; else break; }
+    let asof = "";
+    if (aIdx >= 0) {
+      const x = sx(aIdx);
+      asof =
+        '<line class="asof" x1="' + x.toFixed(1) + '" y1="' + padT + '" x2="' + x.toFixed(1) + '" y2="' + (H - padB) + '"/>' +
+        '<circle class="asofdot" cx="' + x.toFixed(1) + '" cy="' + sy(pts[aIdx][1]).toFixed(1) + '" r="3.5"/>';
+    }
+    box.innerHTML =
+      '<div class="chart-title">' + escapeHtml(r.rider) + " · " + pts.length +
+      " race-days · career peak " + Math.round(r.peak_elo) + " @ " + r.peak_date +
+      (aIdx >= 0 ? " · Elo " + pts[aIdx][1] + " on " + pts[aIdx][0] : "") + "</div>" +
+      '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet">' +
+      grid + '<path class="line" d="' + d + '"/>' + peak + asof +
+      '<text class="gridtext" x="' + padL + '" y="' + (H - 6) + '">' + pts[0][0] + "</text>" +
+      '<text class="gridtext" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + pts[pts.length - 1][0] + "</text>" +
+      "</svg>";
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  $("filter").addEventListener("input", render);
+  $("min50").addEventListener("change", render);
+  $("time").addEventListener("input", (e) => { idx = +e.target.value; rebuild(); });
+  $("latest").addEventListener("click", () => { idx = dates.length - 1; $("time").value = idx; rebuild(); });
+
+  Promise.all([
+    fetch("./data/ranking.json").then((r) => r.json()),
+    fetch("./data/history.json").then((r) => r.json()),
+  ])
+    .then(([rk, h]) => {
+      ranking = rk;
+      hist = h.riders;
+      dates = h.dates;
+      idx = dates.length - 1;
+      const t = $("time");
+      t.max = String(dates.length - 1);
+      t.value = String(idx);
+      rebuild();
+    })
+    .catch((e) => { $("body").innerHTML = '<tr><td colspan="8">Failed to load data: ' + e + "</td></tr>"; });
+</script>

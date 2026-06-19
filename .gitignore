@@ -1,0 +1,18 @@
+node_modules/
+.venv/
+# Raw artifacts and derived DB are large/local; regenerate via the pipeline.
+data/raw/
+data/heats/
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/gpheats_all.csv
+out/
+# verification package — regenerated from the DB by `bun run export:stats`
+export/
+# keep directory placeholders
+!data/raw/.gitkeep
+!data/heats/.gitkeep
+!out/.gitkeep
+*.log
+.fallow

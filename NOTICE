@@ -1,0 +1,23 @@
+sgp-stats — source attributions
+================================
+
+This project compiles publicly available Speedway Grand Prix results into an Elo
+ranking. Every heat stored in the database is derived from a real raw artifact
+saved on disk under data/raw/ (URL + fetched_at + sha256). No data is invented.
+
+1995-2019 heat-by-heat data
+  Source : https://github.com/gogonzo/sport  (datasets gpheats.rda, gpsquads.rda)
+  License: GPL-2
+  Use    : Re-distributed/derived under GPL-2. See that repository for terms.
+
+2020-2026 heat-by-heat data
+  Source : https://www.fimspeedway.com/sgp  (official SGP results)
+  Use    : Public results, retrieved for personal/statistical use, rate-limited,
+           respecting robots.txt (Allow: /). Not used for AI training.
+
+2020-2026 round-total verification (cross-check only, not stored as heats)
+  Source : https://en.wikipedia.org  (..._Speedway_Grand_Prix_of_* articles)
+  License: CC-BY-SA 4.0
+
+Trademarks "Speedway Grand Prix" / "SGP" belong to their respective owners.
+This is an unofficial, non-commercial statistics project.

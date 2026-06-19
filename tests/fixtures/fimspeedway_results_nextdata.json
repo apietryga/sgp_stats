@@ -1,0 +1,80 @@
+{
+  "props": {
+    "pageProps": {
+      "championship": {
+        "id": 3,
+        "title": "SGP",
+        "slug": "sgp",
+        "shortTitle": "SGP",
+        "description": null
+      },
+      "seasons": [
+        {
+          "id": 67,
+          "uuid": "d23873ce-1184-45b7-9cb0-4c23b5a6c0a0",
+          "title": "2026",
+          "slug": "2026",
+          "shortTitle": null,
+          "description": null,
+          "starts_at": "2026-01-01T00:00:00+01:00",
+          "ends_at": "2026-12-31T00:00:00+01:00",
+          "itsId": null,
+          "blackburstId": "SEA_i0at8l9ubdqntcjs"
+        },
+        {
+          "id": 63,
+          "uuid": "5e38d497-0a46-4a4c-b94c-52449bc2a7cb",
+          "title": "2025",
+          "slug": "2025",
+          "shortTitle": null,
+          "description": null,
+          "starts_at": "2025-01-01T00:00:00+01:00",
+          "ends_at": "2025-12-31T00:00:00+01:00",
+          "itsId": "67ed031e32134b20f2f1bf76",
+          "blackburstId": null
+        },
+        {
+          "id": 25,
+          "uuid": "f6ee98f2-a149-4fd8-83e1-dfe2fd97f45e",
+          "title": "2024",
+          "slug": "2024",
+          "shortTitle": null,
+          "description": null,
+          "starts_at": "2024-01-02T00:00:00+01:00",
+          "ends_at": "2024-12-31T00:00:00+01:00",
+          "itsId": "65b8fd68fa827d9f945ebe24",
+          "blackburstId": null
+        },
+        {
+          "id": 8,
+          "uuid": "1772cf78-16ff-43fc-a215-c44135828e3f",
+          "title": "2023",
+          "slug": "2023",
+          "shortTitle": null,
+          "description": null,
+          "starts_at": "2023-01-01T00:00:00+01:00",
+          "ends_at": "2023-12-31T00:00:00+01:00",
+          "itsId": "64282a7c808e9eed12bf6072",
+          "blackburstId": null
+        }
+      ],
+      "currentResultsSeasonId": 67
+    },
+    "__N_SSP": true
+  },
+  "page": "/[championship]/results",
+  "query": {
+    "championship": "sgp"
+  },
+  "buildId": "TE9lDKIifm2CSEGjHAWjE",
+  "isFallback": false,
+  "isExperimentalCompile": false,
+  "gssp": true,
+  "locale": "en",
+  "locales": [
+    "en",
+    "pl"
+  ],
+  "defaultLocale": "en",
+  "scriptLoader": []
+}

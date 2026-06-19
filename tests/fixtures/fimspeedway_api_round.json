@@ -1,0 +1,601 @@
+{
+ "title": "2024 Boll FIM Speedway GP of Croatia",
+ "slug": "2024-boll-fim-speedway-gp-of-croatia",
+ "startsAt": "2024-04-27 19:00:00",
+ "seasonId": 25,
+ "venue": {
+  "title": "Donji Kraljevec - Speedway Stadion Milenium",
+  "city": "Donji Kraljevec",
+  "country": {
+   "name": "Croatia"
+  }
+ },
+ "races": [
+  {
+   "title": "Heat 8",
+   "startsAt": "2024-04-27 17:40:00",
+   "tags": [
+    {
+     "slug": "heat",
+     "title": "heat"
+    },
+    {
+     "slug": "heat8",
+     "title": "heat8"
+    }
+   ],
+   "results": [
+    {
+     "rankings": [
+      {
+       "rank": 1,
+       "points": "3",
+       "colorId": 2,
+       "statusId": null,
+       "entry": {
+        "number": "30",
+        "object": {
+         "id": 744,
+         "firstName": "Leon",
+         "lastName": "Madsen",
+         "country": {
+          "code": "DK"
+         }
+        }
+       }
+      },
+      {
+       "rank": 2,
+       "points": "2",
+       "colorId": 3,
+       "statusId": null,
+       "entry": {
+        "number": "25",
+        "object": {
+         "id": 740,
+         "firstName": "Jack",
+         "lastName": "Holder",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 3,
+       "points": "1",
+       "colorId": 4,
+       "statusId": null,
+       "entry": {
+        "number": "415",
+        "object": {
+         "id": 874,
+         "firstName": "Dominik",
+         "lastName": "Kubera",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      },
+      {
+       "rank": 4,
+       "points": "0",
+       "colorId": 1,
+       "statusId": 4,
+       "entry": {
+        "number": "99",
+        "object": {
+         "id": 738,
+         "firstName": "Dan",
+         "lastName": "Bewley",
+         "country": {
+          "code": "GB"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Semi final 1",
+   "startsAt": "2024-04-27 19:10:00",
+   "tags": [
+    {
+     "slug": "sf",
+     "title": "sf"
+    },
+    {
+     "slug": "sf1",
+     "title": "sf1"
+    }
+   ],
+   "results": [
+    {
+     "rankings": [
+      {
+       "rank": 1,
+       "points": "0",
+       "colorId": 2,
+       "statusId": null,
+       "entry": {
+        "number": "25",
+        "object": {
+         "id": 740,
+         "firstName": "Jack",
+         "lastName": "Holder",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 2,
+       "points": "0",
+       "colorId": 3,
+       "statusId": null,
+       "entry": {
+        "number": "69",
+        "object": {
+         "id": 746,
+         "firstName": "Jason",
+         "lastName": "Doyle",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 3,
+       "points": "0",
+       "colorId": 1,
+       "statusId": null,
+       "entry": {
+        "number": "744",
+        "object": {
+         "id": 713,
+         "firstName": "Kai",
+         "lastName": "Huckenbeck",
+         "country": {
+          "code": "DE"
+         }
+        }
+       }
+      },
+      {
+       "rank": 4,
+       "points": "0",
+       "colorId": 4,
+       "statusId": null,
+       "entry": {
+        "number": "415",
+        "object": {
+         "id": 874,
+         "firstName": "Dominik",
+         "lastName": "Kubera",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Final",
+   "startsAt": "2024-04-27 19:30:00",
+   "tags": [
+    {
+     "slug": "final",
+     "title": "final"
+    },
+    {
+     "slug": "final1",
+     "title": "final1"
+    }
+   ],
+   "results": [
+    {
+     "rankings": [
+      {
+       "rank": 1,
+       "points": "0",
+       "colorId": 2,
+       "statusId": null,
+       "entry": {
+        "number": "25",
+        "object": {
+         "id": 740,
+         "firstName": "Jack",
+         "lastName": "Holder",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 2,
+       "points": "0",
+       "colorId": 4,
+       "statusId": null,
+       "entry": {
+        "number": "69",
+        "object": {
+         "id": 746,
+         "firstName": "Jason",
+         "lastName": "Doyle",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 3,
+       "points": "0",
+       "colorId": 3,
+       "statusId": null,
+       "entry": {
+        "number": "66",
+        "object": {
+         "id": 762,
+         "firstName": "Fredrik",
+         "lastName": "Lindgren",
+         "country": {
+          "code": "SE"
+         }
+        }
+       }
+      },
+      {
+       "rank": 4,
+       "points": "0",
+       "colorId": 1,
+       "statusId": null,
+       "entry": {
+        "number": "95",
+        "object": {
+         "id": 766,
+         "firstName": "Bartosz",
+         "lastName": "Zmarzlik",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "qualif",
+   "startsAt": "2024-04-27 13:00:00",
+   "tags": [
+    {
+     "slug": "qualif",
+     "title": "qualif"
+    }
+   ],
+   "results": [
+    {
+     "rankings": [
+      {
+       "rank": 1,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "415",
+        "object": {
+         "id": 874,
+         "firstName": "Dominik",
+         "lastName": "Kubera",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      },
+      {
+       "rank": 2,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "744",
+        "object": {
+         "id": 713,
+         "firstName": "Kai",
+         "lastName": "Huckenbeck",
+         "country": {
+          "code": "DE"
+         }
+        }
+       }
+      },
+      {
+       "rank": 3,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "54",
+        "object": {
+         "id": 761,
+         "firstName": "Martin",
+         "lastName": "Vaculik",
+         "country": {
+          "code": "SK"
+         }
+        }
+       }
+      },
+      {
+       "rank": 4,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "505",
+        "object": {
+         "id": 750,
+         "firstName": "Robert",
+         "lastName": "Lambert",
+         "country": {
+          "code": "GB"
+         }
+        }
+       }
+      },
+      {
+       "rank": 5,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "29",
+        "object": {
+         "id": 639,
+         "firstName": "Andzejs",
+         "lastName": "Lebedevs",
+         "country": {
+          "code": "LV"
+         }
+        }
+       }
+      },
+      {
+       "rank": 6,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "30",
+        "object": {
+         "id": 744,
+         "firstName": "Leon",
+         "lastName": "Madsen",
+         "country": {
+          "code": "DK"
+         }
+        }
+       }
+      },
+      {
+       "rank": 7,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "95",
+        "object": {
+         "id": 766,
+         "firstName": "Bartosz",
+         "lastName": "Zmarzlik",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      },
+      {
+       "rank": 8,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "48",
+        "object": {
+         "id": 708,
+         "firstName": "Szymon",
+         "lastName": "Wozniak",
+         "country": {
+          "code": "PL"
+         }
+        }
+       }
+      },
+      {
+       "rank": 9,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "201",
+        "object": {
+         "id": 729,
+         "firstName": "Jan",
+         "lastName": "Kvěch",
+         "country": {
+          "code": "CZ"
+         }
+        }
+       }
+      },
+      {
+       "rank": 10,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "25",
+        "object": {
+         "id": 740,
+         "firstName": "Jack",
+         "lastName": "Holder",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      },
+      {
+       "rank": 11,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "18",
+        "object": {
+         "id": 1304,
+         "firstName": "Marius",
+         "lastName": "Hillebrand",
+         "country": {
+          "code": "DE"
+         }
+        }
+       }
+      },
+      {
+       "rank": 12,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "99",
+        "object": {
+         "id": 738,
+         "firstName": "Dan",
+         "lastName": "Bewley",
+         "country": {
+          "code": "GB"
+         }
+        }
+       }
+      },
+      {
+       "rank": 13,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "66",
+        "object": {
+         "id": 762,
+         "firstName": "Fredrik",
+         "lastName": "Lindgren",
+         "country": {
+          "code": "SE"
+         }
+        }
+       }
+      },
+      {
+       "rank": 14,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "155",
+        "object": {
+         "id": 756,
+         "firstName": "Mikkel",
+         "lastName": "Michelsen",
+         "country": {
+          "code": "DK"
+         }
+        }
+       }
+      },
+      {
+       "rank": 15,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "16",
+        "object": {
+         "id": 736,
+         "firstName": "Matej",
+         "lastName": "Zagar",
+         "country": {
+          "code": "SI"
+         }
+        }
+       }
+      },
+      {
+       "rank": 16,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "17",
+        "object": {
+         "id": 668,
+         "firstName": "Matic",
+         "lastName": "Ivačič",
+         "country": {
+          "code": "SI"
+         }
+        }
+       }
+      },
+      {
+       "rank": 17,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "108",
+        "object": {
+         "id": 749,
+         "firstName": "Tai",
+         "lastName": "Woffinden",
+         "country": {
+          "code": "GB"
+         }
+        }
+       }
+      },
+      {
+       "rank": 18,
+       "points": "0",
+       "colorId": null,
+       "statusId": null,
+       "entry": {
+        "number": "69",
+        "object": {
+         "id": 746,
+         "firstName": "Jason",
+         "lastName": "Doyle",
+         "country": {
+          "code": "AU"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

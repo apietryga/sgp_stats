@@ -1,0 +1,6 @@
+alias,canonical_name
+# Manually-approved spelling merges: each line maps a source spelling (alias)
+# to the single canonical rider name. Generate candidates with `bun run build:aliases`
+# (writes out/alias_candidates.csv), review them, then add confirmed pairs here.
+# Example:
+# Grzegorz Walasek,Grzegorz Walasek

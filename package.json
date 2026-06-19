@@ -1,0 +1,30 @@
+{
+  "name": "sgp-stats",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Elo ranking of Speedway Grand Prix riders 1995-2026, heat-by-heat, with zero-hallucination source provenance.",
+  "type": "module",
+  "scripts": {
+    "setup:py": "bash scripts/setup_py.sh",
+    "fetch": "bash scripts/setup_py.sh && bash scripts/run_py.sh scripts/ingest_sport.py && bun run src/ingest_sport.ts",
+    "ingest:sport": "bash scripts/setup_py.sh && bash scripts/run_py.sh scripts/ingest_sport.py && bun run src/ingest_sport.ts",
+    "build": "bun run src/export.ts && bun run src/elo.ts",
+    "scrape:official": "bun run src/scrapers/fimspeedway.ts",
+    "scrape:wiki": "bun run src/scrapers/wikipedia.ts",
+    "build:aliases": "bun run src/normalize.ts --build",
+    "reconcile": "bun run src/reconcile.ts",
+    "verify": "bun run src/verify.ts",
+    "export": "bun run src/export.ts",
+    "export:stats": "bun run src/export_stats.ts",
+    "build:elo": "bun run src/elo.ts",
+    "build:site": "bun run src/build_site.ts",
+    "serve": "bun run src/server.ts",
+    "all": "bun run src/pipeline.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "playwright": "^1.61.0",
+    "typescript": "^6.0.3"
+  }
+}
