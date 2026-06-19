@@ -273,11 +273,3 @@ all`) and commit `docs/` to refresh.
 - Source attributions and licenses: see [`NOTICE`](./NOTICE). Data is collected
   for personal/statistical use, rate-limited, and **not** used for AI training.
 ```
-
-# TODO
-## build
-- na froncie zrób slider który pozwoli szacować elo na osi czasu - początkowa data 1995, i możliwość przesuwania w prawo aż do 2026
-  - na tej podstawie pokazuj jakie ELO mieli userzy w czasie 
-- całość przygoruj do github pages (tylko front) - front musi pobierać dane z walidowanych przygotowanych plików json /csv - zaimplementuj wszystkie fukncjonalności na statycznych plikach
-## mail 
-napisz wiadomość do statystyków - zawrzyj tam źródła danych
