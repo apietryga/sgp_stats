@@ -21,6 +21,8 @@
     color: var(--fg); padding: 6px 10px; border-radius: 6px; min-width: 200px; font: inherit; }
   label.toggle { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
   .count { color: var(--muted); font-size: 12px; margin-left: auto; }
+  select.msort { display: none; background: var(--panel); border: 1px solid var(--line);
+    color: var(--fg); padding: 6px 10px; border-radius: 6px; font: inherit; }
 
   .timebar { display: flex; gap: 14px; align-items: center; padding: 12px 22px;
     border-bottom: 1px solid var(--line); }
@@ -77,6 +79,52 @@
   .heats-filter input[type="date"] { background: var(--panel); border: 1px solid var(--line);
     color: var(--fg); padding: 3px 6px; border-radius: 6px; font: inherit; color-scheme: dark; }
   .heats-filter button[disabled] { opacity: .4; cursor: default; }
+
+  /* ---------------- mobile (≤640px): ranking table becomes a stack of cards ------------- */
+  /* All card rules are scoped with `.wrap > table > …` child combinators so the NESTED
+     heat sub-table (inside a detail row) keeps its normal table layout + its own
+     .heats-scroll{overflow-x:auto} containment and header. */
+  @media (max-width: 640px) {
+    header { padding: 14px 14px 8px; }
+    .controls, .timebar { padding: 12px 14px; gap: 10px; }
+
+    /* let the filter + slider use the full row */
+    #filter { min-width: 0; width: 100%; }
+    .count { margin-left: 0; }
+    select.msort { display: block; }
+    .timebar { flex-wrap: wrap; }
+    input[type="range"] { flex: 1 1 100%; min-width: 0; order: 3; }
+
+    /* kill the horizontal-scroll table; turn every top-level row into a card */
+    .wrap { overflow-x: visible; }
+    .wrap > table { display: block; min-width: 0; width: 100%; }
+    .wrap > table > thead { display: none; }
+    .wrap > table > tbody { display: block; width: 100%; }
+    .wrap > table > tbody > tr { display: block; width: 100%; }
+
+    tr.rider-row { border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+      margin-bottom: 8px; padding: 8px 12px; }
+    tr.rider-row.open { background: #1c2333; }
+
+    .wrap > table > tbody > tr.rider-row > td { display: flex; justify-content: space-between;
+      align-items: baseline; gap: 12px; white-space: normal; border: 0; padding: 2px 0; text-align: right; }
+    .wrap > table > tbody > tr.rider-row > td::before { content: attr(data-label); color: var(--muted);
+      font-size: 12px; font-weight: 400; text-align: left; font-family: -apple-system, system-ui, sans-serif; }
+
+    /* rider name is the card title — full width, no label */
+    .wrap > table > tbody > tr.rider-row > td:first-child { justify-content: flex-start;
+      font-size: 15px; font-weight: 600; padding-bottom: 4px; }
+    .wrap > table > tbody > tr.rider-row > td:first-child::before { content: none; }
+
+    /* hide low-value columns on mobile (Peak date, From, To) */
+    .wrap > table > tbody > tr.rider-row > td:nth-child(5),
+    .wrap > table > tbody > tr.rider-row > td:nth-child(7),
+    .wrap > table > tbody > tr.rider-row > td:nth-child(8) { display: none; }
+
+    /* detail row (chart + heats) spans full width, no card chrome */
+    .wrap > table > tbody > tr.detail > td { display: block; width: 100%; padding: 0; }
+    .chart-box { padding: 6px 0; }
+  }
 </style>
 
 <header>
@@ -89,6 +137,7 @@
 <div class="controls">
   <input id="filter" type="text" placeholder="filter by name…" autocomplete="off" />
   <label class="toggle"><input id="min50" type="checkbox" /> only ≥50 heats</label>
+  <select id="msort" class="msort" aria-label="sort by"></select>
   <span class="count" id="count"></span>
 </div>
 
@@ -206,6 +255,7 @@
 
   function render() {
     renderHead();
+    $("msort").value = sortKey;          // keep the mobile sort control in sync
     const vis = visibleRows();
     $("count").textContent = vis.length + " / " + rows.length + " riders";
     const body = $("body");
@@ -216,6 +266,7 @@
       tr.onclick = () => toggle(r.rider);
       for (const c of COLS) {
         const td = document.createElement("td");
+        td.dataset.label = c.label;      // used by the mobile card layout (::before)
         if (c.num) td.className = "num";
         if (c.key === "rider") {
           td.innerHTML = '<span class="rank-col">' + (i + 1) + ".</span> " + escapeHtml(r.rider);
@@ -451,6 +502,16 @@
   $("min50").addEventListener("change", render);
   $("time").addEventListener("input", (e) => { idx = +e.target.value; rebuild(); });
   $("latest").addEventListener("click", () => { idx = dates.length - 1; $("time").value = idx; rebuild(); });
+
+  // Mobile sort control — column headers are hidden in the card layout, so mirror the
+  // sortable columns into a <select>. Selecting a column sorts by it (numeric cols default
+  // descending, text ascending), matching a header click.
+  $("msort").innerHTML = COLS.map((c) => '<option value="' + c.key + '">' + c.label + "</option>").join("");
+  $("msort").addEventListener("change", (e) => {
+    const c = COLS.find((c) => c.key === e.target.value);
+    sortKey = c.key; sortDir = c.num ? -1 : 1;
+    render();
+  });
 
   Promise.all([
     fetch("./data/ranking.json").then((r) => r.json()),

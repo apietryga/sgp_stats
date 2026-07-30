@@ -107,6 +107,26 @@
   .collegend .g4 { background: var(--g4); }
 
   .empty { color: var(--muted); padding: 30px 0; }
+
+  /* ---------------- mobile (≤640px) ------------- */
+  @media (max-width: 640px) {
+    header { padding: 14px 14px 10px; }
+    section { padding: 14px 14px; }
+
+    /* heat cards: single column (the 270px min overflows narrow phones) */
+    .heats { grid-template-columns: 1fr; }
+
+    /* pickers stack full-width */
+    .row { flex-direction: column; align-items: stretch; }
+    select, input[type="text"] { width: 100%; min-width: 0; }
+    .hint { font-size: 12px; }
+
+    /* round classification fills the width */
+    .totals { min-width: 0; width: 100%; }
+
+    .meta { gap: 10px 14px; }
+    .cov button { min-width: 42px; }
+  }
 </style>
 
 <header>
