@@ -55,6 +55,28 @@
   .peak { fill: var(--accent); }
   .asof { stroke: var(--accent); stroke-dasharray: 3 3; }
   .asofdot { fill: var(--accent); }
+
+  .heats-box { margin-top: 12px; }
+  .heats-box .chart-title { margin-bottom: 8px; }
+  .heats-scroll { overflow-x: auto; }
+  .heats-box table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  .heats-box th, .heats-box td { padding: 4px 10px; text-align: left;
+    border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .heats-box th { position: static; background: transparent; color: var(--muted);
+    font-weight: 600; cursor: default; font-size: 12px; }
+  .heats-box td.num, .heats-box th.num { text-align: right;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .heats-box td.excl { color: var(--accent); }
+  .heats-box .lineup { white-space: normal; color: var(--muted); font-size: 12px; }
+  .heats-box .lineup .me { color: var(--fg); font-weight: 600; }
+  .heats-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px;
+    color: var(--muted); font-size: 12px; }
+  .heats-pager button[disabled] { opacity: .4; cursor: default; }
+  .heats-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+  .heats-filter input[type="date"] { background: var(--panel); border: 1px solid var(--line);
+    color: var(--fg); padding: 3px 6px; border-radius: 6px; font: inherit; color-scheme: dark; }
+  .heats-filter button[disabled] { opacity: .4; cursor: default; }
 </style>
 
 <header>
@@ -104,6 +126,12 @@
   let idx = 0;               // current slider index
   let rows = [];             // merged rows for the selected date
   let sortKey = "elo", sortDir = -1, openRider = null;
+
+  const seasonCache = new Map();     // season -> Promise(parsed json | null) — deduped lazy fetch
+  const riderHeatsCache = new Map(); // rider  -> [heat records] (built once per rider)
+  const HEATS_PER_PAGE = 10;
+  let heatPage = 0;                  // current page for the open rider's heat table
+  let heatFrom = null, heatTo = null; // date-range filter for the heat table (null = no bound)
 
   const $ = (id) => document.getElementById(id);
   const isLatest = () => idx === dates.length - 1;
@@ -208,11 +236,29 @@
     box.className = "chart-box";
     drawChart(box, r, hist[r.rider] || []);
     td.appendChild(box);
+
+    const heatsBox = document.createElement("div");
+    heatsBox.className = "heats-box";
+    if (riderHeatsCache.has(r.rider)) {
+      renderHeats(heatsBox, r.rider);          // cached → synchronous, survives re-renders
+    } else {
+      heatsBox.innerHTML = '<div class="chart-title">ładowanie biegów…</div>';
+      loadRiderHeats(r.rider, r.first_season, r.last_season).then(() => {
+        if (openRider === r.rider) renderHeats(heatsBox, r.rider);
+      });
+    }
+    td.appendChild(heatsBox);
+
     tr.appendChild(td);
     return tr;
   }
 
-  function toggle(rider) { openRider = openRider === rider ? null : rider; render(); }
+  function toggle(rider) {
+    openRider = openRider === rider ? null : rider;
+    heatPage = 0;                    // reset paging & date filter each time a rider is (re)opened
+    heatFrom = null; heatTo = null;
+    render();
+  }
 
   function drawChart(box, r, pts) {
     if (!pts.length) { box.innerHTML = '<div class="chart-title">no history</div>'; return; }
@@ -254,6 +300,147 @@
       '<text class="gridtext" x="' + padL + '" y="' + (H - 6) + '">' + pts[0][0] + "</text>" +
       '<text class="gridtext" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + pts[pts.length - 1][0] + "</text>" +
       "</svg>";
+  }
+
+  // Lazily fetch one season's heat file, deduping concurrent/repeat requests.
+  // Mirrors the per-season Map cache used in heats.html. Missing seasons cache null.
+  function fetchSeason(season) {
+    let p = seasonCache.get(season);
+    if (p) return p;
+    p = fetch("./data/heats/" + season + ".json")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    seasonCache.set(season, p);
+    return p;
+  }
+
+  // Build (and cache) a rider's flat, newest-first list of the individual heats they rode,
+  // by scanning only the season files spanning their career and filtering rows by name.
+  function loadRiderHeats(rider, first, last) {
+    if (riderHeatsCache.has(rider)) return Promise.resolve(riderHeatsCache.get(rider));
+    const seasons = [];
+    for (let s = first; s <= last; s++) seasons.push(s);
+    return Promise.all(seasons.map(fetchSeason)).then((files) => {
+      const out = [];
+      for (const f of files) {
+        if (!f || !f.rounds) continue;
+        for (const rnd of f.rounds) {
+          for (const h of rnd.heats) {
+            const mine = h.rows.find((row) => row[1] === rider);
+            if (!mine) continue;
+            out.push({
+              date: rnd.date, event: rnd.name, venue: rnd.venue,
+              no: h.no, phase: h.phase,
+              gate: mine[0], pts: mine[2], pos: mine[3], rank: mine[4],
+              rows: h.rows,
+            });
+          }
+        }
+      }
+      // Newest tournament first; within a tournament order by importance
+      // (final → semi → main), and within a phase by heat number descending.
+      const phaseRank = (p) => (p === "final" ? 0 : p === "semi" ? 1 : 2);
+      out.sort((a, b) =>
+        a.date !== b.date ? (a.date < b.date ? 1 : -1)
+          : phaseRank(a.phase) !== phaseRank(b.phase) ? phaseRank(a.phase) - phaseRank(b.phase)
+            : b.no - a.no);
+      riderHeatsCache.set(rider, out);
+      return out;
+    });
+  }
+
+  // Render the current page of the open rider's heat table into `container`.
+  // Pager buttons re-call this directly (no full render()) so paging is snappy.
+  function renderHeats(container, rider) {
+    if (rider !== openRider) return;
+    const all = riderHeatsCache.get(rider) || [];
+    if (!all.length) {
+      container.innerHTML = '<div class="chart-title">brak danych o biegach</div>';
+      return;
+    }
+    // Optional date-range filter (both bounds default to null = whole career).
+    const filtered = all.filter((h) =>
+      (!heatFrom || h.date >= heatFrom) && (!heatTo || h.date <= heatTo));
+    const minD = all[all.length - 1].date, maxD = all[0].date; // list is newest-first
+    const filterHtml =
+      '<div class="heats-filter">zakres dat: ' +
+      '<input type="date" data-f="from" min="' + minD + '" max="' + maxD + '"' +
+      (heatFrom ? ' value="' + heatFrom + '"' : "") + "> – " +
+      '<input type="date" data-f="to" min="' + minD + '" max="' + maxD + '"' +
+      (heatTo ? ' value="' + heatTo + '"' : "") + ">" +
+      ' <button class="mini" data-nav="clear"' + (!heatFrom && !heatTo ? " disabled" : "") + ">wyczyść</button>" +
+      "</div>";
+    const titleHtml =
+      '<div class="chart-title">' + escapeHtml(rider) + " · " + filtered.length +
+      (filtered.length !== all.length ? " z " + all.length : "") +
+      " biegów · najnowsze u góry</div>";
+
+    if (!filtered.length) {
+      container.innerHTML = titleHtml + filterHtml +
+        '<div class="chart-title">brak biegów w wybranym zakresie</div>';
+      bindHeatsControls(container, rider, 1);
+      return;
+    }
+
+    const pages = Math.max(1, Math.ceil(filtered.length / HEATS_PER_PAGE));
+    if (heatPage >= pages) heatPage = pages - 1;
+    if (heatPage < 0) heatPage = 0;
+    const start = heatPage * HEATS_PER_PAGE;
+    const slice = filtered.slice(start, start + HEATS_PER_PAGE);
+
+    let rowsHtml = "";
+    for (const h of slice) {
+      const excl = h.pos != null && !/^\d+$/.test(String(h.pos));
+      const finish = h.pos != null ? String(h.pos).toUpperCase() : (h.rank != null ? h.rank : "");
+      const lineup = h.rows.slice()
+        .sort((a, b) => (a[4] == null ? 99 : a[4]) - (b[4] == null ? 99 : b[4]))
+        .map((row) => {
+          const label = (row[4] != null ? row[4] : "?") + ". " + escapeHtml(row[1]);
+          return row[1] === rider ? '<span class="me">' + label + "</span>" : label;
+        })
+        .join("  ");
+      rowsHtml +=
+        "<tr>" +
+        "<td>" + h.date + "</td>" +
+        "<td>" + escapeHtml(h.event || "") + "</td>" +
+        "<td>#" + h.no + " " + escapeHtml(h.phase || "") + "</td>" +
+        '<td class="num">' + (h.gate != null ? h.gate : "—") + "</td>" +
+        '<td class="num">' + (h.pts != null ? h.pts : "—") + "</td>" +
+        '<td class="num' + (excl ? " excl" : "") + '">' + finish + "</td>" +
+        '<td class="lineup">' + lineup + "</td>" +
+        "</tr>";
+    }
+
+    container.innerHTML =
+      titleHtml + filterHtml +
+      '<div class="heats-scroll"><table>' +
+      "<thead><tr><th>Data</th><th>Runda</th><th>Bieg</th>" +
+      '<th class="num">Pole</th><th class="num">Pkt</th><th class="num">Miejsce</th>' +
+      "<th>Skład (kolejność)</th></tr></thead><tbody>" +
+      rowsHtml +
+      "</tbody></table></div>" +
+      '<div class="heats-pager">' +
+      '<button class="mini" data-nav="prev"' + (heatPage <= 0 ? " disabled" : "") + ">‹ poprz.</button>" +
+      "<span>" + (heatPage + 1) + " / " + pages + "</span>" +
+      '<button class="mini" data-nav="next"' + (heatPage >= pages - 1 ? " disabled" : "") + ">nast. ›</button>" +
+      "</div>";
+
+    bindHeatsControls(container, rider, pages);
+  }
+
+  // Wire the date-range inputs, clear button, and pager for the open rider's heat table.
+  // Each control resets to page 1 (except the pager itself) and re-renders in place.
+  function bindHeatsControls(container, rider, pages) {
+    const fromEl = container.querySelector('[data-f="from"]');
+    const toEl = container.querySelector('[data-f="to"]');
+    const clr = container.querySelector('[data-nav="clear"]');
+    const prev = container.querySelector('[data-nav="prev"]');
+    const next = container.querySelector('[data-nav="next"]');
+    if (fromEl) fromEl.onchange = () => { heatFrom = fromEl.value || null; heatPage = 0; renderHeats(container, rider); };
+    if (toEl) toEl.onchange = () => { heatTo = toEl.value || null; heatPage = 0; renderHeats(container, rider); };
+    if (clr) clr.onclick = () => { heatFrom = null; heatTo = null; heatPage = 0; renderHeats(container, rider); };
+    if (prev) prev.onclick = () => { if (heatPage > 0) { heatPage--; renderHeats(container, rider); } };
+    if (next) next.onclick = () => { if (heatPage < pages - 1) { heatPage++; renderHeats(container, rider); } };
   }
 
   function escapeHtml(s) {
