@@ -56,8 +56,11 @@ export class RiderResolver {
   private byKey = new Map<string, number>(); // nameKey -> rider_id
 
   constructor(private db: Database) {
-    this.loadAliasFile();
+    // Warm from the DB first so an alias whose canonical name is an existing
+    // rider resolves to it, instead of ensureRider() trying to re-insert the
+    // name and hitting the UNIQUE constraint on riders.canonical_name.
     this.warmCache();
+    this.loadAliasFile();
   }
 
   /** Load approved alias -> canonical pairs from config/aliases.csv into the DB. */

@@ -1,0 +1,6 @@
+{
+  "origin": "espeedway.pl live-relay round protocols (/live/race_detail.php), scraped via src/scrapers/espeedway.ts",
+  "contributor": "apietryga (antoni.pietryga@linkhouse.co)",
+  "url": "https://www.espeedway.pl/live/",
+  "notes": "Heat-by-heat for a season neither gogonzo/sport (ends 2019) nor fimspeedway's API (heats from 2022) covers. Points are espeedway's 3/2/1/0; rank follows the printed finishing order; position carries exclusion codes (t=tape, x=excluded). Gates are unknown (espeedway prints none). Each round is cross-checked: every rider's summed heat points must equal the classification total espeedway prints. Abbreviated names (initial + surname) were matched to the dataset's canonical full names; transliteration cases and track reserves are in OVERRIDES, each verified against the round's Wikipedia article."
+}

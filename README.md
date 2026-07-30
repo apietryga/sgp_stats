@@ -10,33 +10,39 @@ database derives from a real raw artifact saved under `data/raw/` (URL +
 | Era | Source | Status |
 |-----|--------|--------|
 | **1995–2019** | `gogonzo/sport` (`gpheats.rda`, GPL-2) | ✅ heat-by-heat (235 events, 5 477 heats) |
+| **2020–2021** | espeedway.pl live-relay protocols → `data/contrib/` | ✅ heat-by-heat (19 rounds, 437 heats incl. semis + final) |
 | **2022–2026** | fimspeedway.com official `/api/results` | ✅ heat-by-heat (45 rounds, 1 035 heats incl. semis + final) |
-| **2020–2021** | — | ❌ **no heat-by-heat source** → see [The 2020–2021 gap](#the-20202021-gap) |
 | 2020–2026 | Wikipedia season articles | ✅ round/season point totals, **cross-check only** (never fed to Elo) |
 | 1995–2019 | `gpsquads.rda` | ✅ round point totals, cross-check only |
 | any | `data/contrib/*.csv` | ✅ contributed heat-by-heat, opt-in (`ingest:contrib`) |
 
-The Elo ranking covers **1995–2026** (heat-by-heat), 6 512 heats over 255 riders.
+The Elo ranking covers **1995–2026** (heat-by-heat), 6 995 heats over 271 riders.
 
-### The 2020–2021 gap
+### 2020–2021: recovered from espeedway.pl
 
-Neither automated source covers 2020 or 2021: `gogonzo/sport` was last updated
-through 2019, and fimspeedway's API returns only each round's final
-classification for those two seasons — no races array, so nothing heat-by-heat
-to parse. Those classifications are stored as `external_totals` for
-cross-checking, but they produce **no Elo heats**.
+Neither automated source covers these two seasons: `gogonzo/sport` stops at 2019,
+and fimspeedway's API returns only each round's final classification for 2020–2021
+(no races array), so it yields **no Elo heats** — only `external_totals` for
+cross-checking. Left unfilled, every career running through 2020–2021 was truncated
+at 2019. The clearest casualty was **Artiom Łaguta**: he won the 2021 world
+championship, then was suspended with the other Russian riders before 2022, so the
+ranking showed him with no heats after 2019 at all — his title invisible.
 
-That is not a cosmetic hole. Every career running through 2020–2021 is truncated
-at 2019, and the most visible casualty is **Artiom Łaguta**: he won the 2021
-world championship, then was suspended along with the other Russian riders before
-the 2022 season, so the ranking shows him with no heats at all after 2019 — his
-title is invisible and his `last_season` is two years early. `bun run audit`
-lists every rider in that position (`out/career_gaps.csv`).
+espeedway.pl's live-relay pages (`/live/race_detail.php?id=…`) did cover every
+round of both seasons with the full 23-heat protocol. `src/scrapers/espeedway.ts`
+(`bun run scrape:espeedway`) transcribes them into `data/contrib/2020.csv` and
+`2021.csv`, which then load through the ordinary, strictly-validated
+`ingest:contrib` path as `source='contrib'`. Two safeguards keep it honest:
 
-The gap cannot be scraped, but it can be contributed. Drop heat-by-heat CSVs into
-`data/contrib/` with a recorded origin and run `bun run ingest:contrib`; they are
-stored raw with a sha256, validated row by row, and ingested as `source='contrib'`.
-See [`data/contrib/README.md`](./data/contrib/README.md) for the schema.
+- **Cross-check.** Each round is only emitted if every rider's summed heat points
+  equal the classification total espeedway prints for that rider.
+- **No invented riders.** espeedway prints only an initial + surname; each is
+  matched to the dataset's canonical full names (surrounding seasons), with
+  transliteration cases and track reserves listed in a hand-verified `OVERRIDES`
+  table (each checked against the round's Wikipedia article). A name that resolves
+  to zero or more than one rider aborts the scrape rather than guess.
+
+To reproduce or extend to other gaps, see [`data/contrib/README.md`](./data/contrib/README.md).
 
 ## Quick start
 
@@ -354,4 +360,72 @@ all`) and commit `docs/` to refresh.
   `__NEXT_DATA__` parser (real fixture), and the reconciliation golden rule.
 - Source attributions and licenses: see [`NOTICE`](./NOTICE). Data is collected
   for personal/statistical use, rate-limited, and **not** used for AI training.
-```
+
+# TODO
+- [?] uzupełnienie danych 2020 - 2021
+  Jeśli chodzi o heat-by-heat (każdy bieg z obsadą, kolejnością, punktami itd.), to są tylko kilka sensownych źródeł.
+
+  1. Baansportfansite / Live (najlepsze)
+
+  To prawdopodobnie jedyne kompletne źródło dla SGP 2020–2021.
+
+  live.baansportfansite.nl
+  zawiera:
+  obsady biegów,
+  wyniki każdego biegu,
+  czasy,
+  zmiany zawodników,
+  półfinały i finał.
+
+  Społeczność speedwaya często wskazuje je jako źródło pełnych danych heat-by-heat.
+
+  2. JK Speedway Scorecards
+
+  Bardzo dobra baza PDF-ów.
+
+  Znajdziesz tam scorecard dla każdej rundy SGP 2020 i 2021. Zawierają praktycznie wszystko potrzebne do odtworzenia biegów.
+
+  3. Speedway Updates
+
+  Live coverage każdej rundy.
+
+  Często mają:
+
+  każdy bieg,
+  punkty,
+  klasyfikację na żywo.
+
+  Nie wiem jednak, czy archiwum z 2020 nadal jest kompletne.
+
+  1. Wikipedia (Najlepsza do parsowania/scrapowania)
+  Zarówno polska, jak i angielska Wikipedia mają niezwykle pedantycznie prowadzone artykuły dla każdej rundy SGP.
+
+  Polska Wikipedia: Szukaj haseł dla poszczególnych lat (np. "Grand Prix IMŚ na żużlu 2020"). Wewnątrz artykułu lub w podlinkowanych artykułach o konkretnych rundach (np. "Grand Prix Polski na żużlu 2020") znajdziesz szczegółowe tabele (macierze) z wynikami bieg po biegu dla każdego zawodnika.
+
+  Angielska Wikipedia: Hasła takie jak "2020 Speedway Grand Prix" zawierają sekcje lub podstrony dla każdej rundy ze szczegółowymi "Heat details". Tabele HTML łatwo zamienić na JSON/CSV za pomocą prostego skryptu.
+
+  2. Historia Sportu Żużlowego (speedway.hg.pl)
+  Strona prowadzona przez Romana Lacha to absolutny "Święty Graal" polskich statystyk żużlowych.
+
+  Wejdź w sekcję SGP -> wybierz rok 2020 lub 2021.
+
+  Znajdziesz tam pełne protokoły meczowe, wypisane tekstowo (często w czytelnym formacie typu 1. Zmarzlik (3,2,1,3,3) 12). Możesz użyć wyrażeń regularnych (RegEx), aby szybko rozbić ciągi punktów na poszczególne biegi.
+
+  3. WP SportoweFakty (Archiwum)
+  Największy polski portal żużlowy ma w swoim archiwum artykuły publikowane tuż po zawodach.
+
+  Wpisz w Google: site:sportowefakty.wp.pl "Speedway Grand Prix" "wyniki" "2020".
+
+  Zawsze publikują pełen protokół zawodów, często w formacie: Bieg po biegu: 1. Zmarzlik, Woffinden, Janowski, Madsen. To wymaga nieco więcej pracy przy czyszczeniu danych, ale jest w 100% rzetelne.
+
+  4. Oficjalne komunikaty FIM (Dokumenty PDF)
+  FIM (Międzynarodowa Federacja Motocyklowa) po każdych zawodach publikuje oficjalny protokół w formacie PDF. Mimo że danych brakuje w API fimspeedway.com, same pliki PDF nadal leżą na serwerach FIM.
+
+  Znajdziesz je na stronie fim-moto.com w sekcji dokumentów (Sports -> Track Racing -> SGP -> Documents) lub szukając w Google np. FIM Speedway Grand Prix 2020 round results filetype:pdf.
+
+  Z PDF-ów można wyciągnąć dane za pomocą bibliotek (np. pdfplumber w Pythonie) lub po prostu przepisać je ręcznie.
+- [ ] prosty mechanizm do uzupełnienia danych przez przycisk
+  - twardy przycisk - sprawdzaj datę następnego SGP i jeśli ostatnia jest w przeszłości to pozwól scrapować nowe dane
+  - biorąc pod uwagę że teraz projekt jest hostowany na github pages `https://apietryga.com/sgp_stats/` zaprojektuj rozwiązanie które pozwoli na aktualizację 'twardych danych' (zbiorów danych csv bieg po biegu - źródeł danych tej appki) przez przycisk w app. Niech to rozwiązanie nie wymaga dużo UI innego narzędzia - tak żebyś jak najwięcej mógł zrobić z cli / kodu i tak, żeby było trwałe jak github pages. 
+
+

@@ -22,8 +22,8 @@ rzeczy, na które warto zwrócić uwagę.
 
 ## Zakres i wielkość
 
-Ranking obejmuje **1995–2026** (heat-by-heat): **6 512 biegów, 255 zawodników**,
-≈26 100 wierszy wynikowych (jeden zawodnik × bieg).
+Ranking obejmuje **1995–2026** (heat-by-heat): **6 995 biegów, 271 zawodników**,
+≈28 000 wierszy wynikowych (jeden zawodnik × bieg).
 
 ## Źródła danych (z pełną proweniencją)
 
@@ -34,27 +34,41 @@ sumą `sha256` — nic nie jest „dopisywane z głowy". Łańcuch proweniencji 
 | Okres | Źródło | Rola |
 |------|--------|------|
 | **1995–2019** | pakiet R `gogonzo/sport`, zbiór `gpheats.rda` (licencja GPL-2) | heat-by-heat → **wchodzi do Elo** |
+| **2020–2021** | protokoły live espeedway.pl → `data/contrib/` (`scrape:espeedway`) | heat-by-heat (biegi główne + półfinały + finał) → **wchodzi do Elo** |
 | **2022–2026** | oficjalne API fimspeedway.com (`/api/results`) | heat-by-heat (biegi główne + półfinały + finał) → **wchodzi do Elo** |
-| **2020–2021** | oficjalne fimspeedway.com | tylko klasyfikacja rundy — **brak danych bieg-po-biegu u źródła** → trafia do `external_totals` (cross-check), **NIE wchodzi do Elo** |
+| **2020–2021** | oficjalne fimspeedway.com | tylko klasyfikacja rundy → `external_totals` (cross-check dla danych z espeedway) |
 | 1995–2019 | `gpsquads.rda` (GPL-2) | sumy punktów w rundzie — tylko cross-check |
 | 2020–2026 | artykuły sezonowe Wikipedii (CC-BY-SA) | sumy punktów — niezależny cross-check |
 | dowolny | `data/contrib/*.csv` | dane bieg-po-biegu przekazane ręcznie, z zapisaną proweniencją |
 
-### Luka 2020–2021 — i jak ją zamknąć
+### Luka 2020–2021 — domknięta z espeedway.pl
 
-**2020–2021 nie są policzone w Elo**, bo żadne ze źródeł automatycznych ich nie
-ma: `gogonzo/sport` kończy się na 2019, a API fimspeedway dla tych dwóch sezonów
-zwraca wyłącznie końcową klasyfikację rundy (brak tablicy biegów).
+Przez pewien czas **2020–2021 nie były policzone w Elo**: `gogonzo/sport` kończy
+się na 2019, a API fimspeedway dla tych dwóch sezonów zwraca wyłącznie końcową
+klasyfikację rundy (brak tablicy biegów). Ucinało to **każdą karierę
+przechodzącą przez 2020–2021** — najgłośniejszy przykład to **Artiom Łaguta**:
+mistrz świata 2021, potem zawieszony z pozostałymi zawodnikami z Rosji przed
+sezonem 2022, więc ranking nie pokazywał po 2019 ani jednego jego biegu.
 
-To nie jest kosmetyczna dziura. **Każda kariera przechodząca przez 2020–2021 jest
-ucięta na 2019** — najbardziej rzuca się w oczy **Artiom Łaguta**: mistrz świata
-2021, potem zawieszony razem z pozostałymi zawodnikami z Rosji przed sezonem
-2022, więc w rankingu nie ma po 2019 ani jednego biegu, a jego `last_season`
-pokazuje 2019 zamiast 2021. Pełną listę takich zawodników wypisuje
-`bun run audit` (→ `out/career_gaps.csv`).
+Lukę domknięto z **protokołów live espeedway.pl** (`/live/race_detail.php?id=…`),
+które pokrywają każdą rundę obu sezonów pełnym zapisem 23 biegów.
+`src/scrapers/espeedway.ts` (`bun run scrape:espeedway`) przepisuje je do
+`data/contrib/2020.csv` i `2021.csv`, skąd wchodzą zwykłą, ostro walidowaną
+ścieżką `ingest:contrib` jako `source='contrib'`. Dwa zabezpieczenia pilnują
+rzetelności:
 
-**Jeśli macie te dane — da się je wstawić bez ruszania kodu.** Wystarczy wrzucić
-CSV do `data/contrib/` (jeden plik na sezon lub rundę) razem z plikiem
+- **Cross-check.** Runda jest zapisana tylko wtedy, gdy suma punktów każdego
+  zawodnika z biegów zgadza się z klasyfikacją, którą espeedway drukuje.
+- **Zero wymyślania zawodników.** espeedway podaje tylko inicjał + nazwisko;
+  każde jest dopasowane do kanonicznych pełnych nazw z sąsiednich sezonów, a
+  przypadki transliteracji i rezerwy toru są w ręcznie zweryfikowanej tablicy
+  `OVERRIDES` (każdy sprawdzony w artykule Wikipedii danej rundy). Nazwisko,
+  które pasuje do zera lub więcej niż jednego zawodnika, przerywa scraping —
+  skrypt nigdy nie zgaduje.
+
+Efekt: `bun run audit` nie zgłasza już żadnego sezonu-luki, a kariera Łaguty
+(i innych) sięga 2021. Ten sam mechanizm `data/contrib/` domknie każdą inną
+lukę — wystarczy wrzucić CSV (jeden plik na sezon lub rundę) razem z plikiem
 `<nazwa>.about.json` opisującym pochodzenie (`origin` + `contributor` są
 wymagane — dane bez zapisanego źródła nie są przyjmowane), a potem:
 
@@ -146,13 +160,18 @@ Po rekoncyliacji wielu źródeł każdy bieg ma status:
 - `CONFLICT` — sprzeczność (zapisana z obiema wartościami, **bez nadpisania**)
 - `UNVERIFIED` — brak niezależnego potwierdzenia (tak są oznaczone biegi sport 1995–2019)
 
-W obecnym wydaniu: 5 477 biegów `UNVERIFIED` (1995–2019), 1 035 `OFFICIAL_ONLY`
-(2022–2026), **0 `CONFLICT`**. Silnik Elo odmawia startu przy jakimkolwiek
-`CONFLICT` bez jawnej flagi `--force`.
+W obecnym wydaniu: 5 914 biegów `UNVERIFIED` (1995–2019 sport + 2020–2021
+espeedway/contrib), 1 081 `OFFICIAL_ONLY` (2022–2026), **0 `CONFLICT`**. Silnik
+Elo odmawia startu przy jakimkolwiek `CONFLICT` bez jawnej flagi `--force`.
 
 ## Na co zwrócić uwagę (znane ograniczenia / decyzje do dyskusji)
 
-1. **2020–2021 poza Elo** — brak heat-by-heat u źródła (opisane wyżej).
+1. **2020–2021 z jednego źródła (`UNVERIFIED`).** Heat-by-heat pochodzi z
+   protokołów espeedway.pl (przez `data/contrib/`), więc wchodzi do Elo, ale bez
+   drugiego niezależnego potwierdzenia (cross-check ze `sumą` klasyfikacji jest
+   wewnątrz źródła). Oficjalne klasyfikacje rund z fimspeedway (`external_totals`)
+   dają dodatkowy, częściowy cross-check. Brak bramek (`gate`) — espeedway ich nie
+   publikuje; nie wpływa to na Elo (liczy się `rank`).
 2. **Poprawka dat (znaleziona przy okazji tego feedbacku).** W `gpheats.rda` i
    `gpsquads.rda` dwie rundy mają rok w dacie sprzeczny z własną kolumną
    `season`: GP Europy 2000 z datą `2009-09-23` i GP Niemiec 2008 z datą

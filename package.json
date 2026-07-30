@@ -12,6 +12,7 @@
     "ingest:contrib": "bun run src/ingest_contrib.ts",
     "scrape:official": "bun run src/scrapers/fimspeedway.ts",
     "scrape:wiki": "bun run src/scrapers/wikipedia.ts",
+    "scrape:espeedway": "bun run src/scrapers/espeedway.ts",
     "build:aliases": "bun run src/normalize.ts --build",
     "reconcile": "bun run src/reconcile.ts",
     "verify": "bun run src/verify.ts",

@@ -4,3 +4,7 @@ alias,canonical_name
 # (writes out/alias_candidates.csv), review them, then add confirmed pairs here.
 # Example:
 # Grzegorz Walasek,Grzegorz Walasek
+
+# fimspeedway spells Pontus Aspgren's surname with a stray "e"; the contributed
+# 2020-2021 heats use the correct spelling, which also carries his 2019 history.
+Pontus Aspegren,Pontus Aspgren
