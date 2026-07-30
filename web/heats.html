@@ -1,0 +1,390 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SGP Heats — heat-by-heat results 1995–2026</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #21262d; --fg: #e6edf3;
+    --muted: #7d8590; --accent: #d29922; --hi: #2f81f7;
+    --ok: #3fb950; --gap: #f85149;
+    /* speedway gate colours */
+    --g1: #d13438; --g2: #2f6fd0; --g3: #d8dee9; --g4: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 -apple-system, system-ui, sans-serif; }
+  a { color: var(--hi); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .nav { margin-top: 8px; font-size: 12px; }
+
+  section { padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  /* --- coverage strip --- */
+  .cov { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cov button { background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+    border-radius: 5px; padding: 5px 7px; font: 11px ui-monospace, Menlo, monospace;
+    cursor: pointer; min-width: 46px; position: relative; }
+  .cov button .bar { display: block; height: 3px; margin-top: 4px; border-radius: 2px;
+    background: var(--ok); }
+  .cov button.gap { color: var(--gap); border-color: #5c2626; cursor: help; }
+  .cov button.gap .bar { background: var(--gap); }
+  .cov button.sel { border-color: var(--accent); color: var(--accent); }
+  .cov button:hover { border-color: var(--muted); }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 9px; }
+  .legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    vertical-align: baseline; margin-right: 4px; }
+
+  .gapnote { margin-top: 10px; padding: 9px 12px; border: 1px solid #5c2626;
+    border-radius: 6px; background: #1b1113; color: #f0b8b4; font-size: 12px; }
+  .gapnote b { color: var(--gap); }
+
+  /* --- pickers --- */
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  select, input[type="text"] { background: var(--panel); border: 1px solid var(--line);
+    color: var(--fg); padding: 6px 9px; border-radius: 6px; font: inherit; }
+  input[type="text"] { min-width: 190px; }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  /* --- round meta --- */
+  .meta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 12px;
+    margin-bottom: 12px; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  .tag { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
+    font: 11px ui-monospace, monospace; }
+
+  /* --- heats --- */
+  .heats { display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  .heat { border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+    overflow: hidden; }
+  .heat.final { border-color: var(--accent); }
+  .heat.semi { border-color: #3a4a63; }
+  .heat h3 { margin: 0; padding: 7px 10px; font-size: 12px; font-weight: 600;
+    border-bottom: 1px solid var(--line); display: flex; justify-content: space-between;
+    align-items: center; gap: 8px; }
+  .heat.final h3 { color: var(--accent); }
+  .heat h3 .trust { color: var(--muted); font: 10px ui-monospace, monospace;
+    font-weight: 400; }
+  .heat table { border-collapse: collapse; width: 100%; }
+  .heat td { padding: 4px 10px; border-top: 1px solid var(--line); }
+  .heat tr:first-child td { border-top: 0; }
+  .heat tr.hit td { background: #1c2333; }
+  .gate { display: inline-block; width: 15px; height: 15px; border-radius: 3px;
+    font: 10px/15px ui-monospace, monospace; text-align: center; color: #0d1117;
+    font-weight: 700; }
+  .gate.g1 { background: var(--g1); color: #fff; }
+  .gate.g2 { background: var(--g2); color: #fff; }
+  .gate.g3 { background: var(--g3); }
+  .gate.g4 { background: var(--g4); }
+  .gate.g0 { background: var(--line); color: var(--muted); }
+  td.rider { width: 100%; }
+  td.rider .name { cursor: pointer; }
+  td.rider .name:hover { color: var(--hi); }
+  td.pts, td.pos { text-align: right; font-family: ui-monospace, Menlo, monospace;
+    white-space: nowrap; }
+  td.pts { color: var(--fg); }
+  .dnf { color: var(--gap); font-size: 11px; }
+  .win { color: var(--accent); font-weight: 600; }
+
+  /* --- classification --- */
+  .totals { border-collapse: collapse; min-width: 260px; }
+  .totals td { padding: 3px 10px; border-bottom: 1px solid var(--line); }
+  .totals td.n { text-align: right; font-family: ui-monospace, Menlo, monospace; }
+  .totals tr.hit td { background: #1c2333; }
+  .totals .pos { color: var(--muted); font-family: ui-monospace, monospace; }
+
+  .collegend { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .collegend .sw { display: inline-block; width: 15px; height: 15px; border-radius: 3px;
+    font: 10px/15px ui-monospace, monospace; text-align: center; color: #0d1117;
+    font-weight: 700; margin-right: 2px; vertical-align: text-bottom; }
+  .collegend .g1 { background: var(--g1); color: #fff; }
+  .collegend .g2 { background: var(--g2); color: #fff; }
+  .collegend .g3 { background: var(--g3); }
+  .collegend .g4 { background: var(--g4); }
+
+  .empty { color: var(--muted); padding: 30px 0; }
+</style>
+
+<header>
+  <h1>SGP Heats — heat by heat</h1>
+  <div class="sub">Every heat behind the Elo ranking, as stored: gate, rider, points, finishing code and rank.</div>
+  <div class="nav"><a href="./index.html">← back to the Elo ranking</a></div>
+</header>
+
+<section>
+  <h2>Coverage by season</h2>
+  <div class="cov" id="cov"></div>
+  <div class="legend">
+    <span class="sw" style="background:var(--ok)"></span>heat-by-heat data present ·
+    <span class="sw" style="background:var(--gap)"></span>no heat-by-heat source — these seasons
+    contribute nothing to the ranking, so careers running through them are cut short
+  </div>
+  <div id="gapnotes"></div>
+</section>
+
+<section>
+  <h2>Round</h2>
+  <div class="row">
+    <select id="season"></select>
+    <select id="round"></select>
+    <input id="rider" type="text" placeholder="highlight a rider…" autocomplete="off" />
+    <span class="hint" id="hint"></span>
+  </div>
+</section>
+
+<section>
+  <div class="meta" id="meta"></div>
+  <div class="collegend">
+    each row is <span class="sw g1">1</span><span class="sw g2">2</span><span class="sw g3">3</span><span class="sw g4">4</span>
+    starting gate · rider · points scored · finishing rank — a red code means the rider
+    did not complete the heat. Click a rider to highlight every ride they took.
+  </div>
+  <div class="heats" id="heats"></div>
+  <div class="empty" id="empty" hidden></div>
+</section>
+
+<section>
+  <h2>Round classification <span class="hint">(sum of this round's heat points)</span></h2>
+  <table class="totals"><tbody id="totals"></tbody></table>
+  <div class="hint" style="margin-top:8px">
+    Summed from the heats shown above. Official GP classification points can differ —
+    semi-final and final structure, run-offs and tactical doubles are scored separately —
+    so this is the raw heat sum, not the FIM standings.
+  </div>
+</section>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const PHASE_ORDER = { main: 0, semi: 1, lcq: 1, final: 2 };
+
+  let index = null;         // data/heats/index.json
+  let season = null;        // selected season
+  let seasonData = null;    // data/heats/<season>.json
+  let roundNo = null;       // selected round
+  const cache = new Map();  // season -> parsed json
+
+  const heatLabel = (h) => {
+    if (h.phase === "final") return "Final";
+    if (h.phase === "semi") return "Semi-final " + (h.no === 22 ? 2 : 1);
+    if (h.phase === "lcq") return "Last chance";
+    return "Heat " + h.no;
+  };
+
+  // A rank beyond the number of riders in the heat means "did not complete".
+  const isDnf = (row, size) => row[4] === null || row[4] > size;
+
+  function norm(s) {
+    return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/ł/g, "l").replace(/Ł/g, "L").toLowerCase();
+  }
+
+  // ---------- coverage strip ----------
+  function renderCoverage() {
+    const have = new Map(index.seasons.map((s) => [s.season, s]));
+    const gaps = new Map(index.gaps.map((g) => [g.season, g.reason]));
+    const years = [...new Set([...have.keys(), ...gaps.keys()])].sort((a, b) => a - b);
+    const maxHeats = Math.max(1, ...index.seasons.map((s) => s.heats));
+
+    $("cov").replaceChildren(...years.map((y) => {
+      const s = have.get(y);
+      const b = document.createElement("button");
+      b.className = s ? "" : "gap";
+      if (y === season) b.className += " sel";
+      b.textContent = y;
+      const bar = document.createElement("span");
+      bar.className = "bar";
+      bar.style.width = s ? Math.max(12, Math.round(100 * s.heats / maxHeats)) + "%" : "100%";
+      b.appendChild(bar);
+      b.title = s
+        ? `${y}: ${s.rounds} rounds, ${s.heats} heats, ${s.riders} riders (source: ${s.sources.join(", ")})`
+        : `${y}: ${gaps.get(y) || "no heat-by-heat data"}`;
+      if (s) b.onclick = () => selectSeason(y);
+      return b;
+    }));
+
+    $("gapnotes").replaceChildren(...index.gaps.map((g) => {
+      const d = document.createElement("div");
+      d.className = "gapnote";
+      d.innerHTML = "<b>" + g.season + " — no heat-by-heat data.</b> ";
+      d.appendChild(document.createTextNode(g.reason));
+      return d;
+    }));
+  }
+
+  // ---------- selection ----------
+  async function loadSeason(y) {
+    if (cache.has(y)) return cache.get(y);
+    const res = await fetch("./data/heats/" + y + ".json");
+    if (!res.ok) throw new Error("no data file for " + y);
+    const json = await res.json();
+    cache.set(y, json);
+    return json;
+  }
+
+  async function selectSeason(y, keepRound) {
+    season = y;
+    $("season").value = String(y);
+    seasonData = await loadSeason(y);
+    const rounds = seasonData.rounds;
+    $("round").replaceChildren(...rounds.map((r) => {
+      const o = document.createElement("option");
+      o.value = String(r.round);
+      o.textContent = "R" + r.round + " · " + (r.name || r.date || "round " + r.round);
+      return o;
+    }));
+    const want = rounds.some((r) => r.round === keepRound) ? keepRound : rounds[0]?.round;
+    selectRound(want);
+    renderCoverage();
+  }
+
+  function selectRound(n) {
+    roundNo = n;
+    $("round").value = String(n);
+    render();
+    const url = new URL(location);
+    url.searchParams.set("season", season);
+    url.searchParams.set("round", n);
+    history.replaceState(null, "", url);
+  }
+
+  // ---------- render ----------
+  function render() {
+    const round = seasonData.rounds.find((r) => r.round === roundNo);
+    if (!round) return;
+    const q = norm($("rider").value.trim());
+    const hit = (name) => q.length >= 2 && norm(name).includes(q);
+
+    $("meta").replaceChildren(...[
+      round.date ? ["Date", round.date] : null,
+      round.venue ? ["Venue", round.venue] : null,
+      round.country ? ["Country", round.country] : null,
+      ["Heats", String(round.heats.length)],
+      ["Source", round.source],
+    ].filter(Boolean).map(([k, v]) => {
+      const d = document.createElement("div");
+      d.innerHTML = k + " <b></b>";
+      d.querySelector("b").textContent = v;
+      return d;
+    }));
+
+    const heats = [...round.heats].sort((a, b) =>
+      (PHASE_ORDER[a.phase] ?? 0) - (PHASE_ORDER[b.phase] ?? 0) || a.no - b.no);
+
+    $("heats").replaceChildren(...heats.map((h) => {
+      const card = document.createElement("div");
+      card.className = "heat " + h.phase;
+
+      const head = document.createElement("h3");
+      head.textContent = heatLabel(h);
+      const trust = document.createElement("span");
+      trust.className = "trust";
+      trust.textContent = h.trust;
+      head.appendChild(trust);
+      card.appendChild(head);
+
+      const size = h.rows.length;
+      const rows = [...h.rows].sort((a, b) => (a[4] ?? 99) - (b[4] ?? 99));
+      const table = document.createElement("table");
+      table.appendChild(Object.assign(document.createElement("tbody"), {}));
+      const tb = table.querySelector("tbody");
+      for (const r of rows) {
+        const [gate, rider, pts, pos, rank] = r;
+        const tr = document.createElement("tr");
+        if (hit(rider)) tr.className = "hit";
+
+        const tdG = document.createElement("td");
+        const g = document.createElement("span");
+        g.className = "gate g" + (gate ?? 0);
+        g.textContent = gate ?? "–";
+        g.title = gate ? "starting gate " + gate : "starting gate not recorded";
+        tdG.appendChild(g);
+
+        const tdR = document.createElement("td");
+        tdR.className = "rider";
+        const nm = document.createElement("span");
+        nm.className = "name" + (rank === 1 ? " win" : "");
+        nm.textContent = rider;
+        nm.onclick = () => { $("rider").value = rider; render(); };
+        tdR.appendChild(nm);
+
+        const tdP = document.createElement("td");
+        tdP.className = "pts";
+        tdP.title = "points scored in this heat";
+        tdP.textContent = pts === null ? "" : pts;
+
+        const tdC = document.createElement("td");
+        tdC.className = "pos";
+        tdC.title = "finishing rank";
+        if (isDnf(r, size)) {
+          const s = document.createElement("span");
+          s.className = "dnf";
+          s.textContent = (pos || "dnf").toUpperCase();
+          s.title = "did not complete the heat";
+          tdC.appendChild(s);
+        } else {
+          tdC.textContent = rank ?? "";
+        }
+
+        tr.append(tdG, tdR, tdP, tdC);
+        tb.appendChild(tr);
+      }
+      card.appendChild(table);
+      return card;
+    }));
+
+    $("empty").hidden = heats.length > 0;
+    $("empty").textContent = heats.length ? "" : "No heats stored for this round.";
+
+    $("totals").replaceChildren(...round.totals.map((t, i) => {
+      const tr = document.createElement("tr");
+      if (hit(t[0])) tr.className = "hit";
+      const p = document.createElement("td");
+      p.className = "pos";
+      p.textContent = i + 1;
+      const n = document.createElement("td");
+      n.textContent = t[0];
+      const v = document.createElement("td");
+      v.className = "n";
+      v.textContent = t[1];
+      tr.append(p, n, v);
+      return tr;
+    }));
+
+    const withPhases = heats.some((h) => h.phase !== "main");
+    $("hint").textContent = withPhases
+      ? "semi-finals and final identified"
+      : "this format has no separately labelled semi-final/final";
+  }
+
+  // ---------- boot ----------
+  (async () => {
+    index = await (await fetch("./data/heats/index.json")).json();
+    renderCoverage();
+
+    $("season").replaceChildren(...index.seasons.map((s) => {
+      const o = document.createElement("option");
+      o.value = String(s.season);
+      o.textContent = s.season + " (" + s.rounds + " rounds, " + s.heats + " heats)";
+      return o;
+    }));
+    $("season").onchange = () => selectSeason(Number($("season").value));
+    $("round").onchange = () => selectRound(Number($("round").value));
+    $("rider").oninput = () => render();
+
+    if (index.seasons.length === 0) {
+      $("empty").hidden = false;
+      $("empty").textContent = "No heat data in this build — run `bun run build:site`.";
+      return;
+    }
+    const p = new URLSearchParams(location.search);
+    const wantS = Number(p.get("season"));
+    const wantR = Number(p.get("round"));
+    const known = index.seasons.some((s) => s.season === wantS);
+    const last = index.seasons[index.seasons.length - 1].season;
+    await selectSeason(known ? wantS : last, wantR || undefined);
+  })();
+</script>

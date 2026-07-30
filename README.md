@@ -11,13 +11,32 @@ database derives from a real raw artifact saved under `data/raw/` (URL +
 |-----|--------|--------|
 | **1995–2019** | `gogonzo/sport` (`gpheats.rda`, GPL-2) | ✅ heat-by-heat (235 events, 5 477 heats) |
 | **2022–2026** | fimspeedway.com official `/api/results` | ✅ heat-by-heat (45 rounds, 1 035 heats incl. semis + final) |
-| 2020–2021 | fimspeedway.com official | ⚠️ classification only (no heat-by-heat upstream) → `external_totals` |
+| **2020–2021** | — | ❌ **no heat-by-heat source** → see [The 2020–2021 gap](#the-20202021-gap) |
 | 2020–2026 | Wikipedia season articles | ✅ round/season point totals, **cross-check only** (never fed to Elo) |
 | 1995–2019 | `gpsquads.rda` | ✅ round point totals, cross-check only |
+| any | `data/contrib/*.csv` | ✅ contributed heat-by-heat, opt-in (`ingest:contrib`) |
 
 The Elo ranking covers **1995–2026** (heat-by-heat), 6 512 heats over 255 riders.
-2020–2021 contribute official round classifications for cross-checking but no
-Elo heats, because fimspeedway exposes no heat-by-heat data for those seasons.
+
+### The 2020–2021 gap
+
+Neither automated source covers 2020 or 2021: `gogonzo/sport` was last updated
+through 2019, and fimspeedway's API returns only each round's final
+classification for those two seasons — no races array, so nothing heat-by-heat
+to parse. Those classifications are stored as `external_totals` for
+cross-checking, but they produce **no Elo heats**.
+
+That is not a cosmetic hole. Every career running through 2020–2021 is truncated
+at 2019, and the most visible casualty is **Artiom Łaguta**: he won the 2021
+world championship, then was suspended along with the other Russian riders before
+the 2022 season, so the ranking shows him with no heats at all after 2019 — his
+title is invisible and his `last_season` is two years early. `bun run audit`
+lists every rider in that position (`out/career_gaps.csv`).
+
+The gap cannot be scraped, but it can be contributed. Drop heat-by-heat CSVs into
+`data/contrib/` with a recorded origin and run `bun run ingest:contrib`; they are
+stored raw with a sha256, validated row by row, and ingested as `source='contrib'`.
+See [`data/contrib/README.md`](./data/contrib/README.md) for the schema.
 
 ## Quick start
 
@@ -31,8 +50,9 @@ bun run serve        # view at http://localhost:3000
 `bun run all` runs, in order:
 
 ```
-ingest:sport → scrape:wiki → scrape:official → build:aliases → reconcile
-   → verify → export → build:elo → export:stats → build:site → coverage table
+ingest:sport → scrape:wiki → scrape:official → ingest:contrib → build:aliases
+   → reconcile → verify → audit → export → build:elo → export:stats
+   → build:site → coverage table
 ```
 
 Network steps (`scrape:wiki`, `scrape:official`) are best-effort: if they
@@ -45,9 +65,11 @@ return nothing the pipeline still completes on the data already in the DB.
 | `bun run fetch` / `ingest:sport` | Python downloads `gpheats.rda`/`gpsquads.rda` → CSV; TS loads them into `data/sgp.db` |
 | `bun run scrape:wiki` | Fetch Wikipedia season standings → `external_totals` (cross-check) |
 | `bun run scrape:official` | Official fimspeedway heats via its `/api/results` (heat-by-heat 2022–2026; classifications 2020–2026) |
+| `bun run ingest:contrib` | Load contributed heat-by-heat CSVs from `data/contrib/` (fills gaps no source covers) |
 | `bun run build:aliases` | Propose rider spelling-merge candidates → `out/alias_candidates.csv` |
 | `bun run reconcile` | Three-source reconciliation: set `trust_status`, record provenance & conflicts |
 | `bun run verify` | Credibility reports → `out/*.csv` + console summary |
+| `bun run audit` | Season-by-season **coverage**: gap seasons, short rounds, bad dates, stranded careers |
 | `bun run export` | DB → `data/gpheats_all.csv` (the Elo engine's only input) |
 | `bun run build:elo` / `build` | Compute Elo → `out/ranking.csv`, `out/elo_history.csv` |
 | `bun run export:stats` | Build the statistician verification package → `export/` (see [Export for statisticians](#export-for-statisticians)) |
@@ -179,6 +201,32 @@ row preserving the old value. Per-field provenance is recorded for every row.
 - `credibility_summary.csv` — trust counts, fields filled from official, % official coverage of 2020–2026, round-total agreement
 - `conflicts.csv` — every official-vs-base disagreement to resolve
 - `alias_candidates.csv` — proposed rider spelling merges (manual review)
+- `coverage_report.csv` — per season: rounds, heats, results, riders, sources, rounds with a final
+- `coverage_findings.csv` — gap seasons, short rounds, date/season mismatches
+- `career_gaps.csv` — riders racing when a gap season begins, i.e. whose totals it understates
+- `date_corrections.csv` — every upstream date defect corrected, with the original value
+- `contrib_sources.csv` — contributed files loaded, with origin, contributor and sha256
+
+### Coverage audit (`bun run audit`)
+
+`verify` asks whether the sources agree about the heats we have. `audit` asks the
+question that went unasked for much longer: **which heats do we not have at all?**
+
+A season with no source raises no conflict and fails no cross-check — it simply
+is not there, and every career running through it is silently truncated. That is
+how the 2020–2021 gap survived unnoticed until a reader spotted a world champion
+whose record stopped two years before his title. The audit reports:
+
+| Finding | Meaning |
+|---------|---------|
+| `GAP` | a season inside the covered span with no heats at all |
+| `SHORT` | a round with fewer heats than that season's usual round |
+| `DATE` | a heat whose event date does not fall in its own season |
+| career gaps | riders racing when a gap begins — the ones whose totals it understates |
+
+`SHORT` is informational: a rain-shortened meeting looks exactly like missing
+heats from the data alone. The four currently flagged (2011 r2, 2011 r11, 2015
+r1, 2015 r5) are genuine abandonments, not data loss.
 
 ### Cross-check caveat
 
@@ -235,9 +283,12 @@ against `MANIFEST.csv` (`sha256sum -c`-style).
 `docs/` — the front-end fetches only prepared static files (no API, no DB):
 
 ```
-docs/index.html          vanilla JS + SVG, dark theme
-docs/data/ranking.json   career ranking rows                (~44 KB)
-docs/data/history.json   { dates:[...], riders:{ name:[[date,elo,heats],…] } }  (~124 KB)
+docs/index.html               ranking + time slider; vanilla JS + SVG, dark theme
+docs/heats.html               heat-by-heat browser (see below)
+docs/data/ranking.json        career ranking rows                (~44 KB)
+docs/data/history.json        { dates:[...], riders:{ name:[[date,elo,heats],…] } }  (~124 KB)
+docs/data/heats/index.json    per-season coverage + the gap seasons and why
+docs/data/heats/<season>.json that season's rounds → heats → rider rows (~45 KB each)
 docs/.nojekyll
 ```
 
@@ -252,6 +303,18 @@ marks the selected date. The result is historically faithful — e.g. the slider
 shows Tony Rickardsson on top in 2002 and Tomasz Gollob in 2010 (both then-world
 champions).
 
+**Heat-by-heat browser (`docs/heats.html`).** The evidence under the ranking:
+pick a season and round and see every heat as stored — starting gate (in the
+speedway gate colours), rider, points, finishing code and rank — with semi-finals
+and the final labelled where the format has them, plus the round classification
+summed from those heats. Click a rider to highlight every ride they took in the
+meeting; `?season=2019&round=10` deep-links a round.
+
+It opens on a **coverage strip** over every season, and the seasons with no
+heat-by-heat data are shown in red with the reason spelled out, rather than
+being quietly absent. Only the selected season's JSON is fetched, so the page
+stays light despite the full set being ~1 MB.
+
 **Preview locally:** `bun run serve` serves `docs/` on :3000 exactly as Pages will.
 
 **Publish:** commit `docs/` and in the repo's *Settings → Pages* choose
@@ -262,11 +325,30 @@ all`) and commit `docs/` to refresh.
 
 ## Notes
 
-- **Data integrity fix:** the sport dataset leaves `round` blank for all of 2019
-  and the last 2018 rounds, which previously collapsed a whole season into one
-  "round-0 event" with 40+ riders per heat. Rounds are now derived from the
-  chronological order of distinct dates per season (verified equivalent to the
-  populated labels for 1995–2017), restoring correct per-GP heats.
+- **Data integrity fix (rounds):** the sport dataset leaves `round` blank for all
+  of 2019 and the last 2018 rounds, which previously collapsed a whole season
+  into one "round-0 event" with 40+ riders per heat. Rounds are now derived from
+  the chronological order of distinct dates per season (verified equivalent to
+  the populated labels for 1995–2017), restoring correct per-GP heats.
+- **Data integrity fix (dates):** two events in `gpheats.rda`/`gpsquads.rda` carry
+  a date whose year contradicts their own `season` column — the 2000 GP of Europe
+  is dated `2009-09-23` and the 2008 GP of Germany `2009-10-18`. Because the Elo
+  engine orders heats by date, both rounds were being rated as if raced in late
+  2009, years after the riders in them had stopped racing; correcting them moves
+  204 of 217 riders, Tony Rickardsson by −90 Elo (5th → 18th) and Todd Wiltshire
+  by −111. `src/corrections.ts` rewrites the year only, keeps month and day,
+  refuses when the result would collide with another round of that season, and
+  logs every application to the `corrections` table and `out/date_corrections.csv`.
+- **Phases for 1995–2019.** The sport dataset has no phase column, so the historic
+  era arrived entirely as `main`. `src/phases.ts` labels heats 21/22 as semi-finals
+  and 23 as the final, but only for rounds that *verify* against that structure —
+  exactly 23 heats, and a final made of two riders from each semi. 153 of 235
+  rounds match; the 24-heat (1995–2001) and 25-heat (2002–2004) formats do not and
+  keep `main` throughout. Elo is unaffected (it reads ranks, not phases).
+- **Upstream boundary is reported, not enforced.** The sport ingest used to drop
+  everything after 2019 outright. It now ingests whatever the source carries and
+  announces seasons past the expected boundary, so a future upstream refresh that
+  finally adds 2020–2021 cannot be silently discarded.
 - TypeScript `strict`; `bun test` covers the Elo zero-sum/tie invariants, the
   computation-trace identities (pair delta = K·(S−E), steps sum back), the
   `__NEXT_DATA__` parser (real fixture), and the reconciliation golden rule.

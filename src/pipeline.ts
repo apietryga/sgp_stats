@@ -90,13 +90,15 @@ async function main(): Promise<void> {
     { label: "1. Ingest sport 1995-2019", script: "ingest:sport", critical: true, skipFailIf: sportAlreadyIngested },
     { label: "2. Wikipedia cross-check totals", script: "scrape:wiki", critical: false },
     { label: "3. Official heats (fimspeedway)", script: "scrape:official", critical: false },
-    { label: "4. Build alias candidates", script: "build:aliases", critical: false },
-    { label: "5. Reconcile sources", script: "reconcile", critical: true },
-    { label: "6. Verify / credibility report", script: "verify", critical: true },
-    { label: "7. Export reconciled heats", script: "export", critical: true },
-    { label: "8. Build Elo ranking", script: "build:elo", critical: true },
-    { label: "9. Export verification package", script: "export:stats", critical: true },
-    { label: "10. Build static site (docs/)", script: "build:site", critical: true },
+    { label: "4. Contributed heats (data/contrib)", script: "ingest:contrib", critical: false },
+    { label: "5. Build alias candidates", script: "build:aliases", critical: false },
+    { label: "6. Reconcile sources", script: "reconcile", critical: true },
+    { label: "7. Verify / credibility report", script: "verify", critical: true },
+    { label: "8. Audit coverage by season", script: "audit", critical: true },
+    { label: "9. Export reconciled heats", script: "export", critical: true },
+    { label: "10. Build Elo ranking", script: "build:elo", critical: true },
+    { label: "11. Export verification package", script: "export:stats", critical: true },
+    { label: "12. Build static site (docs/)", script: "build:site", critical: true },
   ];
   for (const s of steps) {
     const ok = await run(s);

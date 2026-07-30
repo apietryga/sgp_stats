@@ -9,11 +9,32 @@ import { openDb, upsertEvent, upsertHeat, insertResult, clearEventHeats } from "
 import { RiderResolver } from "./normalize.ts";
 import { parseCsvObjects, toCsv } from "./csv.ts";
 import { normalizePositionCode } from "./codes.ts";
+import { correctSeasonYearMismatch, recordCorrections } from "./corrections.ts";
+import { derivePhases, PHASE_MAIN } from "./phases.ts";
 import type { RawMeta } from "./raw.ts";
 
 const RAW_DIR = resolve(import.meta.dir, "../data/raw");
 const HEATS_DIR = resolve(import.meta.dir, "../data/heats");
-const MAX_SEASON = 2019; // boundary with the fimspeedway era
+const OUT_DIR = resolve(import.meta.dir, "../out");
+
+/**
+ * Last season this source is expected to cover. It is a *reporting* boundary,
+ * not a filter: seasons beyond it are still ingested, and their arrival is
+ * announced, so an upstream refresh that finally adds 2020-2021 is picked up
+ * instead of being silently dropped on the floor (which is how the gap in those
+ * two seasons stayed invisible).
+ */
+const EXPECTED_MAX_SEASON = 2019;
+
+/** A row of the intermediate _gpsquads.csv (round point totals + venue). */
+interface SquadRow {
+  season: string;
+  date: string;
+  place?: string;
+  rider?: string;
+  points?: string;
+  name?: string | null;
+}
 
 interface HeatRow {
   id: string;
@@ -48,15 +69,12 @@ function dateOnly(s: string): string | null {
  * equivalent and gap-free numbering that also matches the populated labels.
  * Returns a map keyed by `${season}_${date}` -> round.
  */
-function deriveRoundsByDate(
-  items: { season: string; date: string }[],
-  maxSeason = Infinity,
-): Map<string, number> {
+function deriveRoundsByDate(items: { season: string; date: string }[]): Map<string, number> {
   const datesBySeason = new Map<number, Set<string>>();
   for (const it of items) {
     const season = num(it.season);
     const date = dateOnly(it.date);
-    if (season === null || date === null || season > maxSeason) continue;
+    if (season === null || date === null) continue;
     if (!datesBySeason.has(season)) datesBySeason.set(season, new Set());
     datesBySeason.get(season)!.add(date);
   }
@@ -102,10 +120,13 @@ async function main(): Promise<void> {
   // gpheats `id` is a global *heat* id (4 riders share it); the event is keyed
   // by (season, round). gpsquads uses its own event-id space, so we join venue
   // on (season, round) too.
-  const squads = parseCsvObjects(await Bun.file(join(RAW_DIR, "_gpsquads.csv")).text());
+  const squadsRaw = parseCsvObjects(
+    await Bun.file(join(RAW_DIR, "_gpsquads.csv")).text(),
+  ) as unknown as SquadRow[];
+  const squadsFix = correctSeasonYearMismatch(squadsRaw);
+  const squads: SquadRow[] = squadsFix.rows;
   const squadRoundByDate = deriveRoundsByDate(
     squads.map((s) => ({ season: s.season ?? "", date: s.date ?? "" })),
-    MAX_SEASON,
   );
   const placeByEvent = new Map<string, string>();
   for (const s of squads) {
@@ -117,13 +138,15 @@ async function main(): Promise<void> {
   }
 
   // --- gpheats: group rows by event (season, round), then by heat ------------
-  const rows = parseCsvObjects(await Bun.file(heatsCsv).text()) as unknown as HeatRow[];
-  const heatRoundByDate = deriveRoundsByDate(rows, MAX_SEASON);
+  const rawRows = parseCsvObjects(await Bun.file(heatsCsv).text()) as unknown as HeatRow[];
+  const heatsFix = correctSeasonYearMismatch(rawRows);
+  const rows = heatsFix.rows;
+  const heatRoundByDate = deriveRoundsByDate(rows);
   const byEvent = new Map<string, HeatRow[]>();
   for (const r of rows) {
     const season = num(r.season);
     const date = dateOnly(r.date);
-    if (season === null || date === null || season > MAX_SEASON) continue;
+    if (season === null || date === null) continue;
     const round = heatRoundByDate.get(`${season}_${date}`);
     if (round === undefined) continue;
     const key = `${season}_${round}`;
@@ -131,6 +154,7 @@ async function main(): Promise<void> {
     byEvent.get(key)!.push(r);
   }
 
+  let phasedRounds = 0;
   const insertAll = db.transaction(() => {
     let events = 0;
     let heats = 0;
@@ -167,9 +191,18 @@ async function main(): Promise<void> {
         if (!byHeat.has(h)) byHeat.set(h, []);
         byHeat.get(h)!.push(r);
       }
+      // Phase (semi-final / final) is verified against the round's own
+      // structure; null means the round has no recognisable phase split and
+      // every heat stays 'main'.
+      const phases = derivePhases(
+        new Map([...byHeat].map(([h, hr]) => [h, hr.map((r) => r.rider)])),
+      );
+      if (phases) phasedRounds++;
+
       const heatCsvRows: unknown[][] = [];
       for (const [heatNo, hr] of [...byHeat.entries()].sort((a, b) => a[0] - b[0])) {
-        const heatId = upsertHeat(db, evId, heatNo, "main");
+        const phase = phases?.get(heatNo) ?? PHASE_MAIN;
+        const heatId = upsertHeat(db, evId, heatNo, phase);
         heats++;
         for (const r of hr) {
           const riderId = resolver.resolve(r.rider);
@@ -185,6 +218,7 @@ async function main(): Promise<void> {
           results++;
           heatCsvRows.push([
             heatNo,
+            phase,
             num(r.field),
             r.rider,
             num(r.points),
@@ -198,7 +232,10 @@ async function main(): Promise<void> {
       const fname = `${season}_r${String(round).padStart(2, "0")}_${slug(name)}.csv`;
       Bun.write(
         join(HEATS_DIR, fname),
-        toCsv(["heat", "gate", "rider", "points", "position_code", "rank"], heatCsvRows),
+        toCsv(
+          ["heat", "phase", "gate", "rider", "points", "position_code", "rank"],
+          heatCsvRows,
+        ),
       );
     }
     return { events, heats, results };
@@ -215,7 +252,6 @@ async function main(): Promise<void> {
       const date = dateOnly(s.date ?? "");
       const total = num(s.points ?? "");
       if (season === null || date === null || !s.rider) continue;
-      if (season > MAX_SEASON) continue;
       const round = squadRoundByDate.get(`${season}_${date}`);
       if (round === undefined) continue;
       const riderId = resolver.resolve(s.rider);
@@ -230,12 +266,83 @@ async function main(): Promise<void> {
   });
   const totals = totalsTx();
 
+  // --- audit trail for the corrections applied above -------------------------
+  const allCorrections = [...heatsFix.corrections, ...squadsFix.corrections];
+  const allUnresolved = [...heatsFix.unresolved, ...squadsFix.unresolved];
+  recordCorrections(db, "sport", allCorrections);
+  mkdirSync(OUT_DIR, { recursive: true });
+  await Bun.write(
+    join(OUT_DIR, "date_corrections.csv"),
+    toCsv(
+      ["source", "season", "event", "original_date", "corrected_date", "rule", "status"],
+      [
+        ...allCorrections.map((c) => [
+          "sport",
+          c.season,
+          c.name,
+          c.original_date,
+          c.corrected_date,
+          c.rule,
+          "applied",
+        ]),
+        ...allUnresolved.map((u) => [
+          "sport",
+          u.season,
+          u.name,
+          u.value,
+          "",
+          u.reason,
+          "unresolved",
+        ]),
+      ],
+    ),
+  );
+
   const riders = db.query<{ n: number }, []>("SELECT COUNT(*) n FROM riders").get()!.n;
+  const seasons = [...new Set([...byEvent.keys()].map((k) => Number(k.split("_")[0])))].sort(
+    (a, b) => a - b,
+  );
+  const lo = seasons[0];
+  const hi = seasons[seasons.length - 1];
   console.log(
     `Module A loaded: ${events} events, ${heats} heats, ${results} results, ` +
-      `${riders} riders, ${totals} gpsquads totals (seasons 1995-${MAX_SEASON}).`,
+      `${riders} riders, ${totals} gpsquads totals (seasons ${lo}-${hi}).`,
   );
+  console.log(
+    `  phases: ${phasedRounds}/${events} rounds matched the 20+2 semi+final structure ` +
+      `(the rest keep phase='main').`,
+  );
+  if (allCorrections.length) {
+    console.log(
+      `  corrections: ${allCorrections.length} event date(s) fixed where the source's ` +
+        `date-year contradicted its season column -> out/date_corrections.csv`,
+    );
+    for (const c of dedupeCorrections(allCorrections)) {
+      console.log(`    ${c.season} ${c.name ?? ""}: ${c.original_date} -> ${c.corrected_date}`);
+    }
+  }
+  if (allUnresolved.length) {
+    console.warn(`  WARNING: ${allUnresolved.length} date defect(s) left uncorrected:`);
+    for (const u of allUnresolved) console.warn(`    ${u.season} ${u.name ?? ""}: ${u.reason}`);
+  }
+  if (hi !== undefined && hi > EXPECTED_MAX_SEASON) {
+    console.log(
+      `  NOTE: upstream now carries seasons past ${EXPECTED_MAX_SEASON} (through ${hi}). ` +
+        `They were ingested. Re-run reconcile so they are cross-checked against the official source.`,
+    );
+  }
   db.close();
+}
+
+/** One line per corrected event rather than per (season,date) occurrence. */
+function dedupeCorrections<T extends { season: number; original_date: string }>(cs: T[]): T[] {
+  const seen = new Set<string>();
+  return cs.filter((c) => {
+    const k = `${c.season}|${c.original_date}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 function slug(name: string | null): string {

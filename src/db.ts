@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS events (
   date       TEXT,
   country    TEXT,
   venue      TEXT,
-  source     TEXT NOT NULL,          -- 'sport' | 'fimspeedway'
+  source     TEXT NOT NULL,          -- 'sport' | 'fimspeedway' | 'contrib'
   source_url TEXT NOT NULL,
   raw_file   TEXT NOT NULL,
   fetched_at TEXT NOT NULL,
@@ -100,6 +100,21 @@ CREATE TABLE IF NOT EXISTS conflicts (
   official_value  TEXT,
   official_source TEXT,
   detected_at     TEXT NOT NULL
+);
+
+-- Audit trail of defects corrected in an upstream source (see corrections.ts).
+-- A correction is only ever made when the source contradicts itself and the
+-- tie-break is unambiguous; the original value is always kept here.
+CREATE TABLE IF NOT EXISTS corrections (
+  id              INTEGER PRIMARY KEY,
+  source          TEXT NOT NULL,      -- 'sport' | 'contrib' | ...
+  season          INTEGER,
+  subject         TEXT,               -- event name, or whatever identifies the row
+  field           TEXT NOT NULL,      -- 'date' | ...
+  original_value  TEXT,
+  corrected_value TEXT,
+  rule            TEXT NOT NULL,      -- the derivation rule that justified it
+  applied_at      TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_results_heat  ON results(heat_id);
