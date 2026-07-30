@@ -424,8 +424,8 @@ all`) and commit `docs/` to refresh.
   Znajdziesz je na stronie fim-moto.com w sekcji dokumentów (Sports -> Track Racing -> SGP -> Documents) lub szukając w Google np. FIM Speedway Grand Prix 2020 round results filetype:pdf.
 
   Z PDF-ów można wyciągnąć dane za pomocą bibliotek (np. pdfplumber w Pythonie) lub po prostu przepisać je ręcznie.
-- [ ] prosty mechanizm do uzupełnienia danych przez przycisk
+- [?] prosty mechanizm do uzupełnienia danych przez przycisk
   - twardy przycisk - sprawdzaj datę następnego SGP i jeśli ostatnia jest w przeszłości to pozwól scrapować nowe dane
   - biorąc pod uwagę że teraz projekt jest hostowany na github pages `https://apietryga.com/sgp_stats/` zaprojektuj rozwiązanie które pozwoli na aktualizację 'twardych danych' (zbiorów danych csv bieg po biegu - źródeł danych tej appki) przez przycisk w app. Niech to rozwiązanie nie wymaga dużo UI innego narzędzia - tak żebyś jak najwięcej mógł zrobić z cli / kodu i tak, żeby było trwałe jak github pages. 
-
-
+- [?] pod .chart-box dodaj paginowaną historię biegów zawodnika z podstawowymi informacjami (Case Tarasienko 1500 ELO, ale win 0.0 - nie wiadomo o co chodzi)
+- [ ] 

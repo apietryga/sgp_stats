@@ -61,6 +61,7 @@
   <h1>SGP Elo Ranking</h1>
   <div class="sub">Speedway Grand Prix heat-by-heat Elo · 1995–2026 · drag the slider to see the ranking at any date · click a rider for their curve</div>
   <div class="nav"><a href="./heats.html">browse the heats behind it →</a></div>
+  <div class="sub" id="status"></div>
 </header>
 
 <div class="controls">
@@ -279,4 +280,25 @@
       rebuild();
     })
     .catch((e) => { $("body").innerHTML = '<tr><td colspan="8">Failed to load data: ' + e + "</td></tr>"; });
+
+  // Last-updated badge. Best-effort: if status.json is missing (older cache)
+  // the header line simply stays empty rather than breaking the page.
+  const plDate = (s) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
+    return m ? m[3] + "." + m[2] + "." + m[1] : null;
+  };
+  fetch("./data/status.json")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      if (!s) return;
+      const parts = [];
+      const upd = plDate(s.built_at);
+      const last = plDate(s.last_event);
+      const next = plDate(s.next_event);
+      if (upd) parts.push("Zaktualizowano: " + upd);
+      if (last) parts.push("dane do " + last);
+      if (next) parts.push("następna runda: " + next);
+      if (parts.length) $("status").textContent = parts.join(" · ");
+    })
+    .catch(() => {});
 </script>

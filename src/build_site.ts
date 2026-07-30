@@ -20,6 +20,7 @@ import { openDb } from "./db.ts";
 import { KNOWN_GAP_REASONS, findGapSeasons } from "./audit.ts";
 
 const OUT_DIR = resolve(import.meta.dir, "../out");
+const RAW_DIR = resolve(import.meta.dir, "../data/raw");
 const WEB_HTML = resolve(import.meta.dir, "../web/index.html");
 const WEB_HEATS_HTML = resolve(import.meta.dir, "../web/heats.html");
 const SITE_DIR = resolve(import.meta.dir, "../docs");
@@ -221,6 +222,38 @@ async function buildHeatData(): Promise<{ seasons: number[]; bytes: number }> {
   return { seasons: covered, bytes };
 }
 
+/**
+ * Next scheduled SGP round after the data we already hold, read from the
+ * freshly-scraped official season payload (data/raw/fimspeedway_<year>.json).
+ * fimspeedway's season API lists every round including not-yet-raced ones, each
+ * with a `startsAt` date, so the earliest round dated after `lastEvent` is "the
+ * next round". Returns null when no raw payload is present (e.g. a local build
+ * with no scrape) or the season lists nothing later — the site then just shows
+ * the last-updated date and relies on the weekly cron for refresh.
+ */
+function readNextEventDate(lastEvent: string | null): string | null {
+  const year = lastEvent ? Number(lastEvent.slice(0, 4)) : new Date().getFullYear();
+  // Check the last-event season first, then the next year (a January build may
+  // already have next season's schedule but no races yet).
+  for (const y of [year, year + 1]) {
+    const path = resolve(RAW_DIR, `fimspeedway_${y}.json`);
+    if (!existsSync(path)) continue;
+    try {
+      const season = JSON.parse(readFileSync(path, "utf8"));
+      const rounds = Array.isArray(season?.rounds) ? season.rounds : [];
+      const dates = rounds
+        .map((r: any) => (typeof r?.startsAt === "string" ? r.startsAt.slice(0, 10) : null))
+        .filter((d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort();
+      const next = dates.find((d: string) => !lastEvent || d > lastEvent);
+      if (next) return next;
+    } catch {
+      /* malformed raw payload — fall through to null */
+    }
+  }
+  return null;
+}
+
 async function main(): Promise<void> {
   const rankPath = resolve(OUT_DIR, "ranking.csv");
   const histPath = resolve(OUT_DIR, "elo_history.csv");
@@ -271,10 +304,19 @@ async function main(): Promise<void> {
   const dates = [...allDates].sort();
   const history = { dates, riders };
 
+  // --- status.json : when the data was last refreshed + next round ----------
+  const lastEvent = dates.length ? dates[dates.length - 1]! : null;
+  const status = {
+    built_at: new Date().toISOString(),
+    last_event: lastEvent,
+    next_event: readNextEventDate(lastEvent),
+  };
+
   // --- write docs/ ----------------------------------------------------------
   mkdirSync(SITE_DATA, { recursive: true });
   await Bun.write(resolve(SITE_DATA, "ranking.json"), JSON.stringify(ranking));
   await Bun.write(resolve(SITE_DATA, "history.json"), JSON.stringify(history));
+  await Bun.write(resolve(SITE_DATA, "status.json"), JSON.stringify(status));
   await Bun.write(resolve(SITE_DIR, "index.html"), readFileSync(WEB_HTML, "utf8"));
   await Bun.write(resolve(SITE_DIR, "heats.html"), readFileSync(WEB_HEATS_HTML, "utf8"));
   await Bun.write(resolve(SITE_DIR, ".nojekyll"), "");
@@ -294,6 +336,11 @@ async function main(): Promise<void> {
   console.log(
     `  heats.html + data/heats/ ${(heats.bytes / 1024).toFixed(0)} KB ` +
       `(${heats.seasons.length} season files)`,
+  );
+  console.log(
+    `  data/status.json  updated ${status.built_at.slice(0, 10)} · ` +
+      `data through ${status.last_event ?? "—"} · ` +
+      `next round ${status.next_event ?? "(unknown)"}`,
   );
 }
 

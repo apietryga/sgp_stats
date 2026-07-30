@@ -1,0 +1,56 @@
+name: Update data
+
+# Refreshes the published "hard data" (docs/**) by re-running the full pipeline
+# and committing any resulting change. GitHub Pages (Deploy from branch main
+# /docs) redeploys automatically on the push — no deploy step needed here.
+on:
+  schedule:
+    # Weekly, Sunday 06:00 UTC. SGP rounds are typically Saturday, so this picks
+    # up new results the morning after. Runs year-round harmlessly: off-season
+    # runs produce no diff, so nothing is committed.
+    - cron: "0 6 * * SUN"
+  # Manual on-demand trigger (the "button"): Actions tab → Run workflow, or
+  # `gh workflow run update-data.yml`. No token embedded anywhere.
+  workflow_dispatch: {}
+
+# Never let two refresh runs race on the same branch.
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write # needed to push regenerated docs/ back to the branch
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: Run full pipeline (rebuild data + site)
+        # Network steps (scrape:official, scrape:wiki) are best-effort inside
+        # pipeline.ts; a source being down does not fail the job.
+        run: bun run all
+
+      - name: Commit & push updated data (only if changed)
+        run: |
+          git config user.name  "sgp-stats bot"
+          git config user.email "antoni.pietryga@linkhouse.co"
+          if [ -n "$(git status --porcelain docs/)" ]; then
+            git add docs/
+            git commit -m "chore(data): scheduled refresh of published data"
+            git push
+          else
+            echo "No data changes — nothing to commit."
+          fi
