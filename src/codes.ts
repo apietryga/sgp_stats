@@ -14,6 +14,13 @@ export function isFinishCode(code: string): boolean {
   return /^[1-4]$/.test(code);
 }
 
+/** True when the code denotes a DNF/exclusion — a letter code (x/r/tt/t/d/m …),
+ * not a numeric finishing position. Empty/unknown codes are NOT treated as DNF. */
+export function isDnfCode(raw: string | null | undefined): boolean {
+  const s = normalizePositionCode(raw);
+  return s !== "" && !/^\d+$/.test(s);
+}
+
 /** In SGP a heat awards 3/2/1/0 points for 1st/2nd/3rd/4th. This maps points
  * to the rank they should imply, for the verification consistency check.
  * 0 points (incl. exclusions) means "last", i.e. rank >= 4. */

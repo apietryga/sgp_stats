@@ -8,6 +8,12 @@
  * is computed, which makes the per-heat change zero-sum (riders neither create
  * nor destroy rating among themselves).
  *
+ * Riders whose finishing code is a DNF/exclusion (a letter code: x/r/tt/t/d/m …,
+ * not a numeric position) are dropped from the heat before scoring, so they
+ * neither gain nor lose rating and never count as a raced heat — their opponents
+ * race as if the field were that much smaller. On by default; disable with
+ * `--include-dnf` for sensitivity testing.
+ *
  *   E_i   = 1 / (1 + 10^((R_j - R_i) / 400))
  *   S_i   = 1 if rank_i < rank_j, 0 if worse, 0.5 if equal (tie)
  *   Δ_i   = Σ_j  K_i * (S_i - E_i)
@@ -17,6 +23,7 @@
  */
 import { resolve } from "node:path";
 import { parseCsvObjects } from "./csv.ts";
+import { isDnfCode } from "./codes.ts";
 import { EXPORT_PATH, EXPORT_HEADER } from "./export.ts";
 
 const OUT_DIR = resolve(import.meta.dir, "../out");
@@ -27,6 +34,7 @@ export interface EloConfig {
   provisional: boolean; // use a higher K while a rider is new
   provisionalK: number;
   provisionalHeats: number; // number of a rider's first heats treated as provisional
+  excludeDnf: boolean; // drop DNF/exclusion (letter-code) riders before scoring
 }
 
 export const DEFAULT_CONFIG: EloConfig = {
@@ -34,6 +42,7 @@ export const DEFAULT_CONFIG: EloConfig = {
   provisional: true,
   provisionalK: 40,
   provisionalHeats: 30,
+  excludeDnf: true,
 };
 
 /** One rider's line in an input heat (a subset of the export schema). */
@@ -44,6 +53,7 @@ export interface HeatEntry {
   season: number;
   date: string;
   trust_status?: string;
+  position?: string; // finishing code (1-4 or DNF letters x/r/tt/t/d/m); drives excludeDnf
   // Optional heat-level context, carried through to the verification trace.
   round?: number;
   heat_no?: number;
@@ -165,6 +175,11 @@ export class EloEngine {
 
   /** Score one heat: compute pairwise deltas on pre-heat ratings, then apply. */
   processHeat(entries: HeatEntry[]): void {
+    // Drop DNF/exclusion riders (letter finishing codes) so they neither move
+    // ratings nor count as a raced heat, and their opponents race a smaller field.
+    if (this.cfg.excludeDnf) {
+      entries = entries.filter((e) => !isDnfCode(e.position));
+    }
     if (entries.length < 2) return; // a single rider has nobody to compare against
     const head = entries[0]!;
     const heatId = head.id;
@@ -293,6 +308,7 @@ export function parseArgs(argv: string[]): { cfg: EloConfig; force: boolean } {
     else if ((m = a.match(/^--provisional-k=(\d+(?:\.\d+)?)$/))) cfg.provisionalK = Number(m[1]);
     else if ((m = a.match(/^--provisional-heats=(\d+)$/))) cfg.provisionalHeats = Number(m[1]);
     else if (a === "--no-provisional") cfg.provisional = false;
+    else if (a === "--include-dnf") cfg.excludeDnf = false;
     else if (a === "--force") force = true;
   }
   return { cfg, force };
@@ -330,6 +346,7 @@ export async function loadExportRows(path = EXPORT_PATH): Promise<{
       season,
       date: o.date ?? "",
       trust_status: trust,
+      position: o.position || undefined,
       round: num(o.round) ?? undefined,
       heat_no: num(o.heat) ?? undefined,
       phase: o.phase || undefined,
@@ -409,6 +426,7 @@ async function main(): Promise<void> {
   console.log(
     `build:elo done — K=${cfg.k}` +
       (cfg.provisional ? ` (provisional K=${cfg.provisionalK} for first ${cfg.provisionalHeats} heats)` : "") +
+      (cfg.excludeDnf ? ", DNF riders excluded" : ", DNF riders included") +
       `, ${ranking.length} riders, ${engine.history.length} history points.`,
   );
   const top = ranking.slice(0, 5);

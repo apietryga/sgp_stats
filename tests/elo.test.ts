@@ -8,13 +8,31 @@ import {
   type HeatEntry,
 } from "../src/elo.ts";
 
-const UNIFORM: EloConfig = { k: 24, provisional: false, provisionalK: 40, provisionalHeats: 30 };
+const UNIFORM: EloConfig = {
+  k: 24,
+  provisional: false,
+  provisionalK: 40,
+  provisionalHeats: 30,
+  excludeDnf: true,
+};
 
 function heat(id: number, riders: [string, number][]): HeatEntry[] {
   return riders.map(([rider, rank]) => ({
     id,
     rider,
     rank,
+    season: 2000,
+    date: "2000-01-01",
+  }));
+}
+
+/** Like heat(), but each rider carries a finishing position code (drives excludeDnf). */
+function heatP(id: number, riders: [string, number, string][]): HeatEntry[] {
+  return riders.map(([rider, rank, position]) => ({
+    id,
+    rider,
+    rank,
+    position,
     season: 2000,
     date: "2000-01-01",
   }));
@@ -131,6 +149,45 @@ describe("EloEngine", () => {
     e.processHeat(heat(1, [["A", 1], ["B", 2]]));
     expect(e.steps.length).toBe(0);
     expect(e.pairs.length).toBe(0);
+  });
+
+  test("a DNF rider (letter code) is dropped from Elo entirely", () => {
+    const e = new EloEngine(UNIFORM);
+    // A finished 1st, B 2nd, C 3rd, D excluded (rank 5, code 'x').
+    e.processHeat(heatP(1, [["A", 1, "1"], ["B", 2, "2"], ["C", 3, "3"], ["D", 5, "x"]]));
+    // D never enters the rating pool, has no history, no raced heat.
+    expect(e.riders.has("D")).toBe(false);
+    expect(e.history.some((h) => h.rider === "D")).toBe(false);
+    // The finishers scored as a 3-rider heat: same result as no D at all.
+    const ref = new EloEngine(UNIFORM);
+    ref.processHeat(heat(1, [["A", 1], ["B", 2], ["C", 3]]));
+    for (const r of ["A", "B", "C"]) {
+      expect(e.riders.get(r)!.elo).toBeCloseTo(ref.riders.get(r)!.elo, 10);
+      expect(e.riders.get(r)!.heats_raced).toBe(1);
+    }
+  });
+
+  test("a numeric position beyond 4 is NOT a DNF and stays in Elo", () => {
+    const e = new EloEngine(UNIFORM);
+    // E finished 5th (numeric code '5') in a re-run record — a real finish, kept.
+    e.processHeat(heatP(1, [["A", 1, "1"], ["B", 2, "2"], ["C", 3, "3"], ["D", 4, "4"], ["E", 5, "5"]]));
+    expect(e.riders.has("E")).toBe(true);
+    expect(e.riders.get("E")!.heats_raced).toBe(1);
+  });
+
+  test("--include-dnf (excludeDnf:false) keeps DNF riders in Elo", () => {
+    const e = new EloEngine({ ...UNIFORM, excludeDnf: false });
+    e.processHeat(heatP(1, [["A", 1, "1"], ["B", 2, "2"], ["C", 3, "3"], ["D", 5, "x"]]));
+    expect(e.riders.has("D")).toBe(true);
+    expect(e.riders.get("D")!.heats_raced).toBe(1);
+    expect(e.riders.get("D")!.elo).toBeLessThan(START_ELO); // lost every pair
+  });
+
+  test("a heat reduced below 2 riders by DNF exclusion is a no-op", () => {
+    const e = new EloEngine(UNIFORM);
+    e.processHeat(heatP(1, [["A", 1, "1"], ["B", 5, "x"]]));
+    expect(e.riders.has("B")).toBe(false);
+    expect(e.history.length).toBe(0); // A had nobody to race
   });
 
   test("appendHeats orders by date then id regardless of input order", () => {

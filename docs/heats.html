@@ -88,6 +88,8 @@
     white-space: nowrap; }
   td.pts { color: var(--fg); }
   .dnf { color: var(--gap); font-size: 11px; }
+  .dnfrow td.rider .name { color: var(--muted); }
+  .subst { margin-left: 5px; color: var(--muted); font-size: 11px; cursor: help; }
   .win { color: var(--accent); font-weight: 600; }
 
   /* --- classification --- */
@@ -160,8 +162,10 @@
   <div class="meta" id="meta"></div>
   <div class="collegend">
     each row is <span class="sw g1">1</span><span class="sw g2">2</span><span class="sw g3">3</span><span class="sw g4">4</span>
-    starting gate · rider · points scored · finishing rank — a red code means the rider
-    did not complete the heat. Click a rider to highlight every ride they took.
+    starting gate · rider · points scored · finishing rank — a red letter code (X, R, TT,
+    T, D, M) means the rider was excluded / did not complete, and is not counted in Elo;
+    a <span class="subst">↺</span> marks a rider who took an excluded rider's gate in the
+    re-run (hover for who). Click a rider to highlight every ride they took.
   </div>
   <div class="heats" id="heats"></div>
   <div class="empty" id="empty" hidden></div>
@@ -194,8 +198,49 @@
     return "Heat " + h.no;
   };
 
-  // A rank beyond the number of riders in the heat means "did not complete".
-  const isDnf = (row, size) => row[4] === null || row[4] > size;
+  // A letter finishing code (x, r, tt, t, d, m …) means the rider was excluded /
+  // did not complete — as does a rank beyond the field. Numeric positions (incl.
+  // 5/6 from re-run records) are real finishes and keep their number.
+  const dnfCode = (pos) => {
+    const s = String(pos ?? "").trim().toLowerCase();
+    return s !== "" && !/^\d+$/.test(s);
+  };
+  const isDnf = (row, size) => dnfCode(row[3]) || row[4] === null || row[4] > size;
+
+  // Human-readable reason for a finishing code (Polish), for tooltips.
+  const CODE_REASON = {
+    x: "wykluczenie", r: "wycofanie / defekt", tt: "dotknięcie taśmy",
+    t: "taśma", d: "dyskwalifikacja", m: "defekt silnika", ns: "nie wystartował",
+  };
+  const reasonFor = (pos) => {
+    const s = String(pos ?? "").trim().toLowerCase();
+    return CODE_REASON[s] || (dnfCode(s) ? "nie ukończył biegu" : "");
+  };
+
+  // In a re-run, a rider can be excluded and another takes their gate. When a heat
+  // has two riders on the same starting gate — one excluded (DNF), one who rode —
+  // link them: the finisher "came in for" the excluded rider. Returns two maps
+  // keyed by rider name: who each substitute replaced, and who replaced each excluded.
+  function gateSubstitutions(heatRows, size) {
+    const byGate = new Map();
+    for (const rr of heatRows) {
+      if (rr[0] == null) continue;
+      if (!byGate.has(rr[0])) byGate.set(rr[0], []);
+      byGate.get(rr[0]).push(rr);
+    }
+    const cameInFor = new Map();   // finisher name -> {name, code} of excluded rider
+    const replacedBy = new Map();  // excluded name -> finisher name
+    for (const rr of byGate.values()) {
+      if (rr.length < 2) continue;
+      const out = rr.filter((x) => isDnf(x, size));
+      const rode = rr.filter((x) => !isDnf(x, size));
+      for (const f of rode) for (const d of out) {
+        cameInFor.set(f[1], { name: d[1], code: String(d[3] ?? "").toUpperCase() });
+        replacedBy.set(d[1], f[1]);
+      }
+    }
+    return { cameInFor, replacedBy };
+  }
 
   function norm(s) {
     return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -238,7 +283,7 @@
   // ---------- selection ----------
   async function loadSeason(y) {
     if (cache.has(y)) return cache.get(y);
-    const res = await fetch("./data/heats/" + y + ".json");
+    const res = await fetch("./data/heats/" + y + ".json", { cache: "no-cache" });
     if (!res.ok) throw new Error("no data file for " + y);
     const json = await res.json();
     cache.set(y, json);
@@ -308,13 +353,16 @@
 
       const size = h.rows.length;
       const rows = [...h.rows].sort((a, b) => (a[4] ?? 99) - (b[4] ?? 99));
+      const { cameInFor, replacedBy } = gateSubstitutions(h.rows, size);
       const table = document.createElement("table");
       table.appendChild(Object.assign(document.createElement("tbody"), {}));
       const tb = table.querySelector("tbody");
       for (const r of rows) {
         const [gate, rider, pts, pos, rank] = r;
+        const dnf = isDnf(r, size);
         const tr = document.createElement("tr");
         if (hit(rider)) tr.className = "hit";
+        if (dnf) tr.classList.add("dnfrow");
 
         const tdG = document.createElement("td");
         const g = document.createElement("span");
@@ -330,6 +378,15 @@
         nm.textContent = rider;
         nm.onclick = () => { $("rider").value = rider; render(); };
         tdR.appendChild(nm);
+        // Mark a substitute: a rider who took an excluded rider's gate in the re-run.
+        const sub = cameInFor.get(rider);
+        if (sub) {
+          const b = document.createElement("span");
+          b.className = "subst";
+          b.textContent = "↺";
+          b.title = "wjechał za " + sub.name + (sub.code ? " (" + sub.code + ")" : "");
+          tdR.appendChild(b);
+        }
 
         const tdP = document.createElement("td");
         tdP.className = "pts";
@@ -339,11 +396,14 @@
         const tdC = document.createElement("td");
         tdC.className = "pos";
         tdC.title = "finishing rank";
-        if (isDnf(r, size)) {
+        if (dnf) {
           const s = document.createElement("span");
           s.className = "dnf";
           s.textContent = (pos || "dnf").toUpperCase();
-          s.title = "did not complete the heat";
+          const reason = reasonFor(pos);
+          const who = replacedBy.get(rider);
+          s.title = (reason || "nie ukończył biegu") +
+            (who ? " — zastąpił go " + who : "") + " · nie liczony do Elo";
           tdC.appendChild(s);
         } else {
           tdC.textContent = rank ?? "";
@@ -382,7 +442,7 @@
 
   // ---------- boot ----------
   (async () => {
-    index = await (await fetch("./data/heats/index.json")).json();
+    index = await (await fetch("./data/heats/index.json", { cache: "no-cache" })).json();
     renderCoverage();
 
     $("season").replaceChildren(...index.seasons.map((s) => {

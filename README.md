@@ -98,6 +98,12 @@ S_i = 1 if rank_i < rank_j, 0 if worse, 0.5 if equal (tie)
 
 - New rider starts at **1500**.
 - **K** is configurable; **provisional** K is higher while a rider is new.
+- **DNF/exclusion riders are dropped from Elo.** A rider whose finishing code is
+  a letter (`x` exclusion, `r` retired, `tt`/`t` tapes, `d` disqualified, `m`
+  mechanical) is removed from the heat before scoring, so they neither gain nor
+  lose rating, don't count as a raced heat, and their opponents race a smaller
+  field. Numeric positions (incl. `5`/`6` in re-run records) are real finishes
+  and stay. Disable with `--include-dnf`.
 
 ### Changing K
 
@@ -106,9 +112,10 @@ ELO_K=32 bun run build:elo                  # via env
 bun run build:elo --k=32                      # via CLI
 bun run build:elo --provisional-k=50 --provisional-heats=20
 bun run build:elo --no-provisional            # constant K for everyone
+bun run build:elo --include-dnf               # score DNF/excluded riders as last
 ```
 
-Defaults: `K=24`, provisional `K=40` for a rider's first `30` heats.
+Defaults: `K=24`, provisional `K=40` for a rider's first `30` heats, DNF riders excluded.
 
 Per rider the engine collects `current_elo`, `peak_elo` + peak date,
 `heats_raced`, `wins`, `win_rate`, `first_season`, `last_season`, plus the full

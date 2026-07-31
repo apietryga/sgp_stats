@@ -57,6 +57,10 @@
   .peak { fill: var(--accent); }
   .asof { stroke: var(--accent); stroke-dasharray: 3 3; }
   .asofdot { fill: var(--accent); }
+  .dot { fill: var(--hi); opacity: .4; pointer-events: none; }
+  .dot-sel { fill: var(--accent); opacity: 1; }
+  .hover { stroke: var(--muted); stroke-dasharray: 2 2; pointer-events: none; }
+  .hit { fill: transparent; cursor: pointer; }
 
   .heats-box { margin-top: 12px; }
   .heats-box .chart-title { margin-bottom: 8px; }
@@ -75,6 +79,7 @@
   .heats-box td.elo-flat { color: var(--muted); }
   .heats-box .lineup { white-space: normal; color: var(--muted); font-size: 12px; }
   .heats-box .lineup .me { color: var(--fg); font-weight: 600; }
+  .heats-box .lineup .excl { color: var(--accent); }
   .heats-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px;
     color: var(--muted); font-size: 12px; }
   .heats-pager button[disabled] { opacity: .4; cursor: default; }
@@ -289,7 +294,14 @@
     td.colSpan = COLS.length;
     const box = document.createElement("div");
     box.className = "chart-box";
-    drawChart(box, r, hist[r.rider] || []);
+    // click anywhere on the chart → filter the heat table to the nearest race-day
+    // (toggle the same day off to clear). See drawChart's hit-rect handler.
+    drawChart(box, r, hist[r.rider] || [], (dd) => {
+      if (heatFrom === dd && heatTo === dd) { heatFrom = null; heatTo = null; }
+      else { heatFrom = dd; heatTo = dd; }
+      heatPage = 0;
+      render();   // redraws chart (dot-sel highlight) + heat table from cache
+    });
     td.appendChild(box);
 
     const heatsBox = document.createElement("div");
@@ -315,7 +327,7 @@
     render();
   }
 
-  function drawChart(box, r, pts) {
+  function drawChart(box, r, pts, onPick) {
     if (!pts.length) { box.innerHTML = '<div class="chart-title">no history</div>'; return; }
     const W = 760, H = 200, padL = 44, padR = 12, padT = 12, padB = 22;
     const ys = pts.map((p) => p[1]);
@@ -335,6 +347,15 @@
     let peakIdx = 0;
     ys.forEach((v, i) => { if (v > ys[peakIdx]) peakIdx = i; });
     const peak = '<circle class="peak" cx="' + sx(peakIdx).toFixed(1) + '" cy="' + sy(ys[peakIdx]).toFixed(1) + '" r="3"/>';
+    // one clickable dot per race-day; clicking sets the heat date filter (see detailRow)
+    const selDate = (heatFrom && heatFrom === heatTo) ? heatFrom : null;
+    let dots = "";
+    pts.forEach((p, i) => {
+      const sel = p[0] === selDate ? " dot-sel" : "";
+      dots += '<circle class="dot' + sel + '" data-date="' + p[0] +
+        '" cx="' + sx(i).toFixed(1) + '" cy="' + sy(p[1]).toFixed(1) + '" r="3">' +
+        "<title>" + p[0] + " · Elo " + p[1] + "</title></circle>";
+    });
     // as-of marker: last point on/before the selected date
     const target = dates[idx];
     let aIdx = -1;
@@ -346,15 +367,38 @@
         '<line class="asof" x1="' + x.toFixed(1) + '" y1="' + padT + '" x2="' + x.toFixed(1) + '" y2="' + (H - padB) + '"/>' +
         '<circle class="asofdot" cx="' + x.toFixed(1) + '" cy="' + sy(pts[aIdx][1]).toFixed(1) + '" r="3.5"/>';
     }
+    // transparent hover guide + full-area hit rect (drawn last = on top, so clicks land
+    // everywhere — even over the peak/as-of dots that used to swallow them).
+    const hover = '<line class="hover" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" style="display:none"/>';
+    const hit = '<rect class="hit" x="0" y="0" width="' + W + '" height="' + H + '"/>';
     box.innerHTML =
       '<div class="chart-title">' + escapeHtml(r.rider) + " · " + pts.length +
       " race-days · career peak " + Math.round(r.peak_elo) + " @ " + r.peak_date +
       (aIdx >= 0 ? " · Elo " + pts[aIdx][1] + " on " + pts[aIdx][0] : "") + "</div>" +
       '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet">' +
-      grid + '<path class="line" d="' + d + '"/>' + peak + asof +
+      grid + '<path class="line" d="' + d + '"/>' + dots + peak + asof +
       '<text class="gridtext" x="' + padL + '" y="' + (H - 6) + '">' + pts[0][0] + "</text>" +
       '<text class="gridtext" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + pts[pts.length - 1][0] + "</text>" +
-      "</svg>";
+      hover + hit + "</svg>";
+
+    // Map a pointer event to the nearest race-day index (x is index-based via sx()).
+    const svg = box.querySelector("svg");
+    const hoverEl = box.querySelector(".hover");
+    const nearestIdx = (e) => {
+      const p = svg.createSVGPoint();
+      p.x = e.clientX; p.y = e.clientY;
+      const u = p.matrixTransform(svg.getScreenCTM().inverse());
+      const t = (u.x - padL) / Math.max(1, W - padL - padR);
+      return Math.max(0, Math.min(pts.length - 1, Math.round(t * (pts.length - 1))));
+    };
+    const hitEl = box.querySelector(".hit");
+    hitEl.addEventListener("pointermove", (e) => {
+      const x = sx(nearestIdx(e)).toFixed(1);
+      hoverEl.setAttribute("x1", x); hoverEl.setAttribute("x2", x);
+      hoverEl.style.display = "";
+    });
+    hitEl.addEventListener("pointerleave", () => { hoverEl.style.display = "none"; });
+    if (onPick) hitEl.addEventListener("click", (e) => onPick(pts[nearestIdx(e)][0]));
   }
 
   // Lazily fetch one season's heat file, deduping concurrent/repeat requests.
@@ -362,7 +406,7 @@
   function fetchSeason(season) {
     let p = seasonCache.get(season);
     if (p) return p;
-    p = fetch("./data/heats/" + season + ".json")
+    p = fetch("./data/heats/" + season + ".json", { cache: "no-cache" })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     seasonCache.set(season, p);
@@ -450,8 +494,13 @@
       const lineup = h.rows.slice()
         .sort((a, b) => (a[4] == null ? 99 : a[4]) - (b[4] == null ? 99 : b[4]))
         .map((row) => {
-          const label = (row[4] != null ? row[4] : "?") + ". " + escapeHtml(row[1]);
-          return row[1] === rider ? '<span class="me">' + label + "</span>" : label;
+          // A letter finishing code (x/r/tt/t/d/m …) means excluded — show the code,
+          // not the rank number (those riders are not counted in Elo).
+          const rExcl = row[3] != null && !/^\d+$/.test(String(row[3]));
+          const place = rExcl ? String(row[3]).toUpperCase() : (row[4] != null ? row[4] : "?");
+          const label = place + ". " + escapeHtml(row[1]);
+          const cls = (row[1] === rider ? "me " : "") + (rExcl ? "excl" : "");
+          return cls.trim() ? '<span class="' + cls.trim() + '">' + label + "</span>" : label;
         })
         .join("  ");
       rowsHtml +=
@@ -530,8 +579,8 @@
   });
 
   Promise.all([
-    fetch("./data/ranking.json").then((r) => r.json()),
-    fetch("./data/history.json").then((r) => r.json()),
+    fetch("./data/ranking.json", { cache: "no-cache" }).then((r) => r.json()),
+    fetch("./data/history.json", { cache: "no-cache" }).then((r) => r.json()),
   ])
     .then(([rk, h]) => {
       ranking = rk;
@@ -551,7 +600,7 @@
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
     return m ? m[3] + "." + m[2] + "." + m[1] : null;
   };
-  fetch("./data/status.json")
+  fetch("./data/status.json", { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : null))
     .then((s) => {
       if (!s) return;

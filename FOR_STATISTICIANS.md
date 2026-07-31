@@ -112,9 +112,17 @@ Parametry użyte w tym wydaniu (zapisane też w `export/METHODOLOGY.md`):
 - remis (równy rank) → S = 0.5 dla obu
 - **Elo używa wyłącznie pozycji w biegu (rank), nie punktów.** Punkty są w danych
   tylko informacyjnie (półfinały/finał mają 0 pkt, ale realny rank 1–4).
+- **Wykluczenia/DNF nie liczą się do Elo.** Zawodnik z literowym kodem finiszu
+  (`x` wykluczenie, `r` wycofanie, `tt`/`t` taśma, `d` dyskwalifikacja, `m`
+  defekt) jest usuwany z biegu **przed** liczeniem: nie zmienia Elo, nie zwiększa
+  `heats_raced`, a rywale ścigają się o jednego mniej. Pozycje numeryczne (w tym
+  `5`/`6` w rekordach powtórek) to realne finisze i zostają. Na liście biegów
+  wykluczony wciąż jest widoczny (z literką jako powodem). Wyłączenie:
+  `--include-dnf`.
 
 K jest konfigurowalne (`ELO_K=… ` lub `--k=`, `--provisional-k=`,
-`--provisional-heats=`, `--no-provisional`) — zachęcam do testów wrażliwości.
+`--provisional-heats=`, `--no-provisional`, `--include-dnf`) — zachęcam do testów
+wrażliwości.
 
 ## Surowe dane i pełna odtwarzalność (`export/`)
 

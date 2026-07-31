@@ -258,6 +258,13 @@ held BEFORE the heat. A rider's net change is the sum of their pairwise deltas,
 applied only after the whole heat is computed (so the per-heat change is
 zero-sum under a uniform K).
 
+Riders whose finishing code is a DNF/exclusion — a letter code (x/r/tt/t/d/m …),
+not a numeric position — are dropped from the heat before scoring: they neither
+gain nor lose rating, never count as a raced heat, and their opponents race a
+smaller field. (Numeric positions 5/6 in re-run records are real finishes and
+are kept.) This is on by default; \`--include-dnf\` keeps them for sensitivity
+testing.
+
     E_i = 1 / (1 + 10^((R_j - R_i) / 400))           (expected score, col expected_a)
     S_i = 1 if rank_i < rank_j, 0 if worse, 0.5 tie  (actual score,   col score_a)
     delta_i(from pair) = K_i * (S_i - E_i)            (col delta_a_from_pair)
@@ -270,6 +277,7 @@ zero-sum under a uniform K).
   - provisional: ${cfg.provisional ? `yes — K=${cfg.provisionalK} for a rider's first ${cfg.provisionalHeats} heats` : "no (constant K)"}
   - chronological order: by date, then by global heat id
   - tie rule: equal rank => S = 0.5 for both riders
+  - DNF exclusion: ${cfg.excludeDnf ? "yes — letter-code (x/r/tt/t/d/m) riders dropped from Elo" : "no (--include-dnf: DNF riders scored as last)"}
   - riders ranked: ${engine.ranking().length}
   - rider-heat rows: ${engine.steps.length}; pair rows: ${engine.pairs.length}; heat input rows: ${heatRowCount}
 
