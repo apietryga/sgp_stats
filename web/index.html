@@ -61,7 +61,7 @@
   .heats-box { margin-top: 12px; }
   .heats-box .chart-title { margin-bottom: 8px; }
   .heats-scroll { overflow-x: auto; }
-  .heats-box table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  .heats-box table { border-collapse: collapse; width: 100%; min-width: 640px; }
   .heats-box th, .heats-box td { padding: 4px 10px; text-align: left;
     border-bottom: 1px solid var(--line); white-space: nowrap; }
   .heats-box th { position: static; background: transparent; color: var(--muted);
@@ -69,6 +69,10 @@
   .heats-box td.num, .heats-box th.num { text-align: right;
     font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   .heats-box td.excl { color: var(--accent); }
+  .heats-box td.elo { font-variant-numeric: tabular-nums; }
+  .heats-box td.elo-up { color: #3fb950; }
+  .heats-box td.elo-down { color: #f85149; }
+  .heats-box td.elo-flat { color: var(--muted); }
   .heats-box .lineup { white-space: normal; color: var(--muted); font-size: 12px; }
   .heats-box .lineup .me { color: var(--fg); font-weight: 600; }
   .heats-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px;
@@ -382,7 +386,7 @@
             out.push({
               date: rnd.date, event: rnd.name, venue: rnd.venue,
               no: h.no, phase: h.phase,
-              gate: mine[0], pts: mine[2], pos: mine[3], rank: mine[4],
+              gate: mine[0], pts: mine[2], pos: mine[3], rank: mine[4], elo: mine[5],
               rows: h.rows,
             });
           }
@@ -458,6 +462,7 @@
         '<td class="num">' + (h.gate != null ? h.gate : "—") + "</td>" +
         '<td class="num">' + (h.pts != null ? h.pts : "—") + "</td>" +
         '<td class="num' + (excl ? " excl" : "") + '">' + finish + "</td>" +
+        eloCell(h.elo) +
         '<td class="lineup">' + lineup + "</td>" +
         "</tr>";
     }
@@ -467,6 +472,7 @@
       '<div class="heats-scroll"><table>' +
       "<thead><tr><th>Data</th><th>Runda</th><th>Bieg</th>" +
       '<th class="num">Pole</th><th class="num">Pkt</th><th class="num">Miejsce</th>' +
+      '<th class="num">Elo Δ</th>' +
       "<th>Skład (kolejność)</th></tr></thead><tbody>" +
       rowsHtml +
       "</tbody></table></div>" +
@@ -492,6 +498,16 @@
     if (clr) clr.onclick = () => { heatFrom = null; heatTo = null; heatPage = 0; renderHeats(container, rider); };
     if (prev) prev.onclick = () => { if (heatPage > 0) { heatPage--; renderHeats(container, rider); } };
     if (next) next.onclick = () => { if (heatPage < pages - 1) { heatPage++; renderHeats(container, rider); } };
+  }
+
+  // One heat's Elo change as a coloured, arrowed cell. null = rider not rated
+  // for this heat (e.g. a solo/void heat that never entered the engine).
+  function eloCell(d) {
+    if (d == null) return '<td class="num elo">—</td>';
+    const r = Math.round(d);
+    if (r > 0) return '<td class="num elo elo-up">▲ +' + r + "</td>";
+    if (r < 0) return '<td class="num elo elo-down">▼ ' + r + "</td>"; // r carries its own minus sign
+    return '<td class="num elo elo-flat">→ 0</td>';
   }
 
   function escapeHtml(s) {

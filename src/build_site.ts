@@ -18,6 +18,7 @@ import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { parseCsvObjects } from "./csv.ts";
 import { openDb } from "./db.ts";
 import { KNOWN_GAP_REASONS, findGapSeasons } from "./audit.ts";
+import { START_ELO } from "./elo.ts";
 
 const OUT_DIR = resolve(import.meta.dir, "../out");
 const RAW_DIR = resolve(import.meta.dir, "../data/raw");
@@ -46,6 +47,7 @@ type HeatResultTuple = [
   points: number | null,
   position: string | null,
   rank: number | null,
+  elo_delta: number | null, // this rider's Elo change from this heat (rounded, null if not rated)
 ];
 
 interface SiteHeat {
@@ -73,7 +75,9 @@ interface SiteRound {
  * that hold nothing, and why. The gap is part of the data, not an absence the
  * reader is left to infer.
  */
-async function buildHeatData(): Promise<{ seasons: number[]; bytes: number }> {
+async function buildHeatData(
+  eloDelta: Map<string, number>,
+): Promise<{ seasons: number[]; bytes: number }> {
   const db = openDb();
 
   const rows = db
@@ -139,7 +143,14 @@ async function buildHeatData(): Promise<{ seasons: number[]; bytes: number }> {
       heatIndex.set(hk, heat);
       round.heats.push(heat);
     }
-    heat.rows.push([r.gate, r.rider, r.points, r.position, r.rank]);
+    heat.rows.push([
+      r.gate,
+      r.rider,
+      r.points,
+      r.position,
+      r.rank,
+      eloDelta.get(`${r.rider}|${r.heat_id}`) ?? null,
+    ]);
 
     const tk = `${r.season}|${r.round}`;
     if (!totals.has(tk)) totals.set(tk, new Map());
@@ -280,13 +291,27 @@ async function main(): Promise<void> {
   // running heat count through that date.
   const perRider = new Map<string, { date: string; elo: number }[]>();
   const allDates = new Set<string>();
+  // Per-heat Elo change for each rider, keyed `${rider}|${heatId}`. elo_history is
+  // globally chronological, so each rider's rows arrive in order; the delta is the
+  // step from their previous end-of-heat Elo (START_ELO before their debut). Both
+  // sides are the rounded values written to elo_history.csv, so deltas reconcile
+  // exactly with the Elo numbers shown on the curve and ranking.
+  const eloDelta = new Map<string, number>();
+  const prevElo = new Map<string, number>();
   for (const o of parseCsvObjects(readFileSync(histPath, "utf8"))) {
     const rider = o.rider!;
     const date = o.date ?? "";
     if (!date) continue;
     if (!perRider.has(rider)) perRider.set(rider, []);
-    perRider.get(rider)!.push({ date, elo: Number(o.elo_after) });
+    const after = Number(o.elo_after);
+    perRider.get(rider)!.push({ date, elo: after });
     allDates.add(date);
+    const heatId = Number(o.id);
+    if (Number.isFinite(heatId)) {
+      const before = prevElo.get(rider) ?? START_ELO;
+      eloDelta.set(`${rider}|${heatId}`, after - before);
+      prevElo.set(rider, after);
+    }
   }
 
   const riders: Record<string, [string, number, number][]> = {};
@@ -321,7 +346,7 @@ async function main(): Promise<void> {
   await Bun.write(resolve(SITE_DIR, "heats.html"), readFileSync(WEB_HEATS_HTML, "utf8"));
   await Bun.write(resolve(SITE_DIR, ".nojekyll"), "");
 
-  const heats = await buildHeatData();
+  const heats = await buildHeatData(eloDelta);
 
   const rankBytes = Bun.file(resolve(SITE_DATA, "ranking.json")).size;
   const histBytes = Bun.file(resolve(SITE_DATA, "history.json")).size;
