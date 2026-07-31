@@ -217,30 +217,6 @@
     return CODE_REASON[s] || (dnfCode(s) ? "nie ukończył biegu" : "");
   };
 
-  // In a re-run, a rider can be excluded and another takes their gate. When a heat
-  // has two riders on the same starting gate — one excluded (DNF), one who rode —
-  // link them: the finisher "came in for" the excluded rider. Returns two maps
-  // keyed by rider name: who each substitute replaced, and who replaced each excluded.
-  function gateSubstitutions(heatRows, size) {
-    const byGate = new Map();
-    for (const rr of heatRows) {
-      if (rr[0] == null) continue;
-      if (!byGate.has(rr[0])) byGate.set(rr[0], []);
-      byGate.get(rr[0]).push(rr);
-    }
-    const cameInFor = new Map();   // finisher name -> {name, code} of excluded rider
-    const replacedBy = new Map();  // excluded name -> finisher name
-    for (const rr of byGate.values()) {
-      if (rr.length < 2) continue;
-      const out = rr.filter((x) => isDnf(x, size));
-      const rode = rr.filter((x) => !isDnf(x, size));
-      for (const f of rode) for (const d of out) {
-        cameInFor.set(f[1], { name: d[1], code: String(d[3] ?? "").toUpperCase() });
-        replacedBy.set(d[1], f[1]);
-      }
-    }
-    return { cameInFor, replacedBy };
-  }
 
   function norm(s) {
     return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -353,7 +329,15 @@
 
       const size = h.rows.length;
       const rows = [...h.rows].sort((a, b) => (a[4] ?? 99) - (b[4] ?? 99));
-      const { cameInFor, replacedBy } = gateSubstitutions(h.rows, size);
+      // Substitutions (reserve rode in place of an excluded rider) are computed at
+      // build time — from a shared gate or the curated overlay — and shipped as h.subs.
+      const cameInFor = new Map(), replacedBy = new Map();
+      for (const pair of (h.subs || [])) {
+        const outRow = h.rows.find((r) => r[1] === pair[0]);
+        const code = outRow ? String(outRow[3] ?? "").toUpperCase() : "";
+        cameInFor.set(pair[1], { name: pair[0], code });
+        replacedBy.set(pair[0], pair[1]);
+      }
       const table = document.createElement("table");
       table.appendChild(Object.assign(document.createElement("tbody"), {}));
       const tb = table.querySelector("tbody");

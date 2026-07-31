@@ -80,6 +80,7 @@
   .heats-box .lineup { white-space: normal; color: var(--muted); font-size: 12px; }
   .heats-box .lineup .me { color: var(--fg); font-weight: 600; }
   .heats-box .lineup .excl { color: var(--accent); }
+  .heats-box .lineup .subst { color: var(--muted); cursor: help; }
   .heats-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px;
     color: var(--muted); font-size: 12px; }
   .heats-pager button[disabled] { opacity: .4; cursor: default; }
@@ -431,7 +432,7 @@
               date: rnd.date, event: rnd.name, venue: rnd.venue,
               no: h.no, phase: h.phase,
               gate: mine[0], pts: mine[2], pos: mine[3], rank: mine[4], elo: mine[5],
-              rows: h.rows,
+              rows: h.rows, subs: h.subs || null,
             });
           }
         }
@@ -491,6 +492,9 @@
     for (const h of slice) {
       const excl = h.pos != null && !/^\d+$/.test(String(h.pos));
       const finish = h.pos != null ? String(h.pos).toUpperCase() : (h.rank != null ? h.rank : "");
+      // Who came in for whom (reserve substitutions), computed at build time.
+      const cameInFor = new Map(), replacedBy = new Map();
+      for (const pair of (h.subs || [])) { cameInFor.set(pair[1], pair[0]); replacedBy.set(pair[0], pair[1]); }
       const lineup = h.rows.slice()
         .sort((a, b) => (a[4] == null ? 99 : a[4]) - (b[4] == null ? 99 : b[4]))
         .map((row) => {
@@ -498,9 +502,13 @@
           // not the rank number (those riders are not counted in Elo).
           const rExcl = row[3] != null && !/^\d+$/.test(String(row[3]));
           const place = rExcl ? String(row[3]).toUpperCase() : (row[4] != null ? row[4] : "?");
-          const label = place + ". " + escapeHtml(row[1]);
+          let label = place + ". " + escapeHtml(row[1]);
+          const out = replacedBy.get(row[1]);      // this rider was excluded, replaced by …
+          const inFor = cameInFor.get(row[1]);     // this rider came in for …
+          if (inFor) label += ' <span class="subst" title="wjechał za ' + escapeHtml(inFor) + '">↺</span>';
           const cls = (row[1] === rider ? "me " : "") + (rExcl ? "excl" : "");
-          return cls.trim() ? '<span class="' + cls.trim() + '">' + label + "</span>" : label;
+          const title = out ? ' title="zastąpił go ' + escapeHtml(out) + '"' : "";
+          return cls.trim() || title ? '<span class="' + cls.trim() + '"' + title + ">" + label + "</span>" : label;
         })
         .join("  ");
       rowsHtml +=

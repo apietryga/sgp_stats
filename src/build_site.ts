@@ -19,6 +19,9 @@ import { parseCsvObjects } from "./csv.ts";
 import { openDb } from "./db.ts";
 import { KNOWN_GAP_REASONS, findGapSeasons } from "./audit.ts";
 import { START_ELO } from "./elo.ts";
+import { isDnfCode } from "./codes.ts";
+
+const SUBS_PATH = resolve(import.meta.dir, "../data/substitutions.csv");
 
 const OUT_DIR = resolve(import.meta.dir, "../out");
 const RAW_DIR = resolve(import.meta.dir, "../data/raw");
@@ -50,11 +53,61 @@ type HeatResultTuple = [
   elo_delta: number | null, // this rider's Elo change from this heat (rounded, null if not rated)
 ];
 
+/** A "reserve came in for an excluded rider" pair: [excluded, substitute]. */
+type SubPair = [out: string, in_: string];
+
 interface SiteHeat {
   no: number;
   phase: string;
   trust: string;
   rows: HeatResultTuple[];
+  subs?: SubPair[]; // present only when the heat had a track-reserve substitution
+}
+
+/**
+ * Curated overlay: who rode in place of an excluded rider, for heats where the
+ * gate is not recorded (2020+ contrib data) so it can't be derived from a shared
+ * gate. Keyed `season|round|heat_no`. See data/substitutions.csv (with sources).
+ */
+function loadSubstitutions(): Map<string, SubPair[]> {
+  const map = new Map<string, SubPair[]>();
+  if (!existsSync(SUBS_PATH)) return map;
+  for (const o of parseCsvObjects(readFileSync(SUBS_PATH, "utf8"))) {
+    if (!o.excluded_rider || !o.substitute_rider) continue;
+    const key = `${o.season}|${o.round}|${o.heat}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push([o.excluded_rider, o.substitute_rider]);
+  }
+  return map;
+}
+
+/**
+ * Substitution pairs for one heat: derived from a shared starting gate (an
+ * excluded rider and a finisher on the same gate — the re-run replacement), plus
+ * any curated pairs from the overlay. Deduped by excluded|substitute.
+ */
+function heatSubs(rows: HeatResultTuple[], explicit: SubPair[] | undefined): SubPair[] {
+  const pairs: SubPair[] = [];
+  const byGate = new Map<number, HeatResultTuple[]>();
+  for (const r of rows) {
+    if (r[0] == null) continue;
+    if (!byGate.has(r[0])) byGate.set(r[0], []);
+    byGate.get(r[0])!.push(r);
+  }
+  for (const g of byGate.values()) {
+    if (g.length < 2) continue;
+    const out = g.filter((r) => isDnfCode(r[3]));
+    const rode = g.filter((r) => !isDnfCode(r[3]));
+    for (const f of rode) for (const d of out) pairs.push([d[1], f[1]]);
+  }
+  if (explicit) pairs.push(...explicit);
+  const seen = new Set<string>();
+  return pairs.filter(([o, i]) => {
+    const k = `${o}|${i}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 interface SiteRound {
@@ -161,11 +214,16 @@ async function buildHeatData(
   mkdirSync(SITE_HEATS, { recursive: true });
   let bytes = 0;
   const seasonMeta: Record<string, unknown>[] = [];
+  const subsOverlay = loadSubstitutions();
 
   for (const [season, seasonRounds] of [...bySeason].sort((a, b) => a[0] - b[0])) {
     const roundList = [...seasonRounds.values()].sort((a, b) => a.round - b.round);
     for (const round of roundList) {
       round.heats.sort((a, b) => a.no - b.no || a.phase.localeCompare(b.phase));
+      for (const h of round.heats) {
+        const subs = heatSubs(h.rows, subsOverlay.get(`${season}|${round.round}|${h.no}`));
+        if (subs.length) h.subs = subs;
+      }
       const t = totals.get(`${season}|${round.round}`);
       round.totals = t
         ? [...t.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
