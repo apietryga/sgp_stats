@@ -20,6 +20,9 @@
   input[type="text"] { background: var(--panel); border: 1px solid var(--line);
     color: var(--fg); padding: 6px 10px; border-radius: 6px; min-width: 200px; font: inherit; }
   label.toggle { color: var(--muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  input[type="number"] { background: var(--panel); border: 1px solid var(--line);
+    color: var(--fg); padding: 5px 6px; border-radius: 6px; width: 52px; font: inherit;
+    text-align: right; }
   .count { color: var(--muted); font-size: 12px; margin-left: auto; }
   select.msort { display: none; background: var(--panel); border: 1px solid var(--line);
     color: var(--fg); padding: 6px 10px; border-radius: 6px; font: inherit; }
@@ -36,16 +39,32 @@
   .live { color: var(--muted); font-size: 12px; }
   .live.on { color: #3fb950; }
 
-  .wrap { overflow-x: auto; }
+  /* No scroll container here on normal widths: overflow-x:auto would make .wrap a
+     scroll container (overflow-y computes to auto), pinning position:sticky to .wrap
+     instead of the viewport and breaking the sticky header + open row. The table only
+     overflows horizontally between the card breakpoint (640px) and its min-width
+     (720px), so scope the horizontal scroll to just that band. */
+  .wrap { overflow-x: visible; }
+  @media (min-width: 641px) and (max-width: 720px) { .wrap { overflow-x: auto; } }
   table { border-collapse: collapse; width: 100%; min-width: 720px; }
   th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { position: sticky; top: 0; background: var(--bg); cursor: pointer; user-select: none;
+  th { position: sticky; top: 0; z-index: 3; background: var(--bg); cursor: pointer; user-select: none;
     font-weight: 600; color: var(--muted); }
   th.sorted { color: var(--fg); }
   th .arrow { color: var(--accent); }
   td.num, th.num { text-align: right; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   tr.rider-row:hover { background: var(--panel); cursor: pointer; }
   tr.rider-row.open { background: #1c2333; }
+  /* Open rider row stays pinned under the header while you read its details,
+     so it's always clear whose card is expanded. */
+  tr.rider-row.open > td { position: sticky; top: var(--head-h, 33px); z-index: 2;
+    background: #1c2333; box-shadow: 0 1px 0 var(--hi); }
+  tr.rider-row.inactive td { color: var(--muted); }
+  .elo-delta { font-size: 11px; margin-left: 6px; font-variant-numeric: tabular-nums; cursor: help; }
+  .elo-delta.up { color: #3fb950; }
+  .elo-delta.down { color: #f85149; }
+  .elo-delta.flat { color: var(--muted); }
+  tr.rider-row.inactive .elo-delta { opacity: 0.65; }
   .rank-col { color: var(--muted); }
   .detail td { background: var(--panel); }
   .chart-box { padding: 10px 4px; }
@@ -60,6 +79,9 @@
   .dot { fill: var(--hi); opacity: .4; pointer-events: none; }
   .dot-sel { fill: var(--accent); opacity: 1; }
   .hover { stroke: var(--muted); stroke-dasharray: 2 2; pointer-events: none; }
+  .hoverdot { fill: var(--hi); stroke: var(--bg); stroke-width: 1.5; pointer-events: none; }
+  .hoverlabel { fill: var(--fg); font: 11px ui-monospace, monospace; pointer-events: none; }
+  .hoverlabel-bg { fill: var(--bg); opacity: .85; pointer-events: none; }
   .hit { fill: transparent; cursor: pointer; }
 
   .heats-box { margin-top: 12px; }
@@ -114,7 +136,10 @@
 
     tr.rider-row { border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
       margin-bottom: 8px; padding: 8px 12px; }
-    tr.rider-row.open { background: #1c2333; }
+    tr.rider-row.open { background: #1c2333; position: sticky; top: 4px; z-index: 2;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+    /* cards stack the cells vertically, so the per-cell sticky rule doesn't apply here */
+    tr.rider-row.open > td { position: static; box-shadow: none; }
 
     .wrap > table > tbody > tr.rider-row > td { display: flex; justify-content: space-between;
       align-items: baseline; gap: 12px; white-space: normal; border: 0; padding: 2px 0; text-align: right; }
@@ -146,7 +171,8 @@
 
 <div class="controls">
   <input id="filter" type="text" placeholder="filter by name…" autocomplete="off" />
-  <label class="toggle"><input id="min50" type="checkbox" /> only ≥50 heats</label>
+  <label class="toggle" title="Zawodnik jest „aktywny”, jeśli wystąpił w co najmniej jednej z tylu ostatnich rund (licząc do wybranej daty). Nieaktywni mają wyszarzony wiersz — ich rating może być nieaktualny. Ustawienie zapisywane w przeglądarce.">active: ostatnie <input id="activeRounds" type="number" min="1" max="301" value="15" /> rund</label>
+  <label class="toggle" title="Pokaż też nieaktywnych zawodników (wyszarzone wiersze). Domyślnie widoczni. Ustawienie zapisywane w przeglądarce."><input id="showInactive" type="checkbox" checked /> pokaż nieaktywnych</label>
   <select id="msort" class="msort" aria-label="sort by"></select>
   <span class="count" id="count"></span>
 </div>
@@ -195,14 +221,21 @@
   const $ = (id) => document.getElementById(id);
   const isLatest = () => idx === dates.length - 1;
 
-  // last history point with date <= target (binary search), or null if pre-debut
-  function asOf(points, target) {
+  // index of the last history point with date <= target (binary search), or -1 if pre-debut
+  function asOfIdx(points, target) {
     let lo = 0, hi = points.length - 1, ans = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (points[mid][0] <= target) { ans = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    return ans < 0 ? null : points[ans];
+    return ans;
+  }
+
+  // "active" = raced in one of the last N rounds. N is user-configurable (persisted).
+  const ACTIVE_ROUNDS_KEY = "sgp.activeRounds", ACTIVE_ROUNDS_DEFAULT = 15;
+  function activeRounds() {
+    const v = parseInt($("activeRounds").value, 10);
+    return Number.isFinite(v) && v > 0 ? v : ACTIVE_ROUNDS_DEFAULT;
   }
 
   function rebuild() {
@@ -210,11 +243,19 @@
     $("date").textContent = target || "—";
     $("live").textContent = isLatest() ? "live (latest)" : "historical";
     $("live").className = "live" + (isLatest() ? " on" : "");
+    // Start of the window of the last N rounds up to the selected date.
+    const windowStart = dates[Math.max(0, idx - (activeRounds() - 1))];
     rows = [];
     for (const r of ranking) {
-      const p = hist[r.rider] ? asOf(hist[r.rider], target) : null;
-      if (!p) continue;                 // rider had not debuted by this date
-      rows.push({ ...r, elo: p[1], heats: p[2] });
+      const pts = hist[r.rider];
+      const ai = pts ? asOfIdx(pts, target) : -1;
+      if (ai < 0) continue;             // rider had not debuted by this date
+      const p = pts[ai];
+      // Net Elo change over the rider's last round (as-of point minus the one before it).
+      const lastDelta = ai > 0 ? p[1] - pts[ai - 1][1] : null;
+      // p[0] is the rider's most recent race-day on/before target; active if it
+      // falls inside the recent-rounds window.
+      rows.push({ ...r, elo: p[1], heats: p[2], lastDelta, active: p[0] >= windowStart });
     }
     render();
   }
@@ -243,9 +284,9 @@
 
   function visibleRows() {
     const q = $("filter").value.trim().toLowerCase();
-    const min50 = $("min50").checked;
+    const showInactive = $("showInactive").checked;
     const out = rows.filter((r) => {
-      if (min50 && r.heats < 50) return false;
+      if (!showInactive && !r.active) return false;
       if (q && !r.rider.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -272,7 +313,7 @@
     body.innerHTML = "";
     vis.forEach((r, i) => {
       const tr = document.createElement("tr");
-      tr.className = "rider-row" + (r.rider === openRider ? " open" : "");
+      tr.className = "rider-row" + (r.rider === openRider ? " open" : "") + (r.active ? "" : " inactive");
       tr.onclick = () => toggle(r.rider);
       for (const c of COLS) {
         const td = document.createElement("td");
@@ -280,12 +321,19 @@
         if (c.num) td.className = "num";
         if (c.key === "rider") {
           td.innerHTML = '<span class="rank-col">' + (i + 1) + ".</span> " + escapeHtml(r.rider);
+        } else if (c.key === "elo") {
+          // Elo value + net change over the rider's last round.
+          td.innerHTML = fmt(c, r[c.key]) + eloDeltaBadge(r.lastDelta);
         } else td.textContent = fmt(c, r[c.key]);
         tr.appendChild(td);
       }
       body.appendChild(tr);
       if (r.rider === openRider) body.appendChild(detailRow(r));
     });
+    // Pin the open row exactly under the sticky header: match its sticky top to
+    // the header's real height (font/zoom-proof, vs. a hard-coded guess).
+    const headH = $("head").offsetHeight;
+    if (headH) document.documentElement.style.setProperty("--head-h", headH + "px");
   }
 
   function detailRow(r) {
@@ -295,18 +343,24 @@
     td.colSpan = COLS.length;
     const box = document.createElement("div");
     box.className = "chart-box";
-    // click anywhere on the chart → filter the heat table to the nearest race-day
-    // (toggle the same day off to clear). See drawChart's hit-rect handler.
-    drawChart(box, r, hist[r.rider] || [], (dd) => {
+    const heatsBox = document.createElement("div");
+    heatsBox.className = "heats-box";
+    const pts = hist[r.rider] || [];
+
+    // Click a race-day on the chart → filter the heat table to that day (click the same
+    // day again to clear). Redraw ONLY this rider's chart + heats — never a full render(),
+    // which would rebuild all 269 rows and make the chart flicker/jump. The chart box has
+    // a fixed aspect ratio, so redrawing it in place doesn't shift anything below it.
+    const onPick = (dd) => {
       if (heatFrom === dd && heatTo === dd) { heatFrom = null; heatTo = null; }
       else { heatFrom = dd; heatTo = dd; }
       heatPage = 0;
-      render();   // redraws chart (dot-sel highlight) + heat table from cache
-    });
+      drawChart(box, r, pts, onPick);
+      if (riderHeatsCache.has(r.rider)) renderHeats(heatsBox, r.rider);
+    };
+    drawChart(box, r, pts, onPick);
     td.appendChild(box);
 
-    const heatsBox = document.createElement("div");
-    heatsBox.className = "heats-box";
     if (riderHeatsCache.has(r.rider)) {
       renderHeats(heatsBox, r.rider);          // cached → synchronous, survives re-renders
     } else {
@@ -321,10 +375,21 @@
     return tr;
   }
 
+  // The rider's most recent race-day on/before the timebar date (the day the chart's
+  // as-of marker points at), or null if they hadn't debuted yet.
+  function riderAsOfDate(rider) {
+    const pts = hist[rider];
+    if (!pts) return null;
+    const ai = asOfIdx(pts, dates[idx]);
+    return ai >= 0 ? pts[ai][0] : null;
+  }
+
   function toggle(rider) {
     openRider = openRider === rider ? null : rider;
     heatPage = 0;                    // reset paging & date filter each time a rider is (re)opened
-    heatFrom = null; heatTo = null;
+    // If the timebar is parked on a past date, focus the heats on the day shown on the
+    // chart; at the latest date show the rider's whole heat history.
+    heatFrom = heatTo = (openRider && !isLatest()) ? riderAsOfDate(openRider) : null;
     render();
   }
 
@@ -371,6 +436,10 @@
     // transparent hover guide + full-area hit rect (drawn last = on top, so clicks land
     // everywhere — even over the peak/as-of dots that used to swallow them).
     const hover = '<line class="hover" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" style="display:none"/>';
+    const hoverParts =
+      '<circle class="hoverdot" r="3.5" cx="0" cy="0" style="display:none"/>' +
+      '<rect class="hoverlabel-bg" x="0" y="0" width="0" height="0" rx="2" style="display:none"/>' +
+      '<text class="hoverlabel" x="0" y="0" style="display:none"></text>';
     const hit = '<rect class="hit" x="0" y="0" width="' + W + '" height="' + H + '"/>';
     box.innerHTML =
       '<div class="chart-title">' + escapeHtml(r.rider) + " · " + pts.length +
@@ -380,11 +449,14 @@
       grid + '<path class="line" d="' + d + '"/>' + dots + peak + asof +
       '<text class="gridtext" x="' + padL + '" y="' + (H - 6) + '">' + pts[0][0] + "</text>" +
       '<text class="gridtext" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + pts[pts.length - 1][0] + "</text>" +
-      hover + hit + "</svg>";
+      hover + hoverParts + hit + "</svg>";
 
     // Map a pointer event to the nearest race-day index (x is index-based via sx()).
     const svg = box.querySelector("svg");
     const hoverEl = box.querySelector(".hover");
+    const hoverDot = box.querySelector(".hoverdot");
+    const labelEl = box.querySelector(".hoverlabel");
+    const labelBg = box.querySelector(".hoverlabel-bg");
     const nearestIdx = (e) => {
       const p = svg.createSVGPoint();
       p.x = e.clientX; p.y = e.clientY;
@@ -394,11 +466,33 @@
     };
     const hitEl = box.querySelector(".hit");
     hitEl.addEventListener("pointermove", (e) => {
-      const x = sx(nearestIdx(e)).toFixed(1);
-      hoverEl.setAttribute("x1", x); hoverEl.setAttribute("x2", x);
+      const i = nearestIdx(e);
+      const x = sx(i), y = sy(pts[i][1]);
+      hoverEl.setAttribute("x1", x.toFixed(1)); hoverEl.setAttribute("x2", x.toFixed(1));
       hoverEl.style.display = "";
+      hoverDot.setAttribute("cx", x.toFixed(1)); hoverDot.setAttribute("cy", y.toFixed(1));
+      hoverDot.style.display = "";
+      // Date (+ Elo) label near the top of the guide; flip side & anchor near edges.
+      const text = pts[i][0] + " · " + pts[i][1];
+      const rightSide = x > W / 2;
+      const lx = rightSide ? x - 6 : x + 6;
+      labelEl.textContent = text;
+      labelEl.setAttribute("x", lx.toFixed(1));
+      labelEl.setAttribute("y", (padT + 9).toFixed(1));
+      labelEl.setAttribute("text-anchor", rightSide ? "end" : "start");
+      labelEl.style.display = "";
+      // Backing rectangle sized from the rendered text so it stays legible over the line.
+      const bb = labelEl.getBBox();
+      labelBg.setAttribute("x", (bb.x - 3).toFixed(1));
+      labelBg.setAttribute("y", (bb.y - 1).toFixed(1));
+      labelBg.setAttribute("width", (bb.width + 6).toFixed(1));
+      labelBg.setAttribute("height", (bb.height + 2).toFixed(1));
+      labelBg.style.display = "";
     });
-    hitEl.addEventListener("pointerleave", () => { hoverEl.style.display = "none"; });
+    hitEl.addEventListener("pointerleave", () => {
+      hoverEl.style.display = "none"; hoverDot.style.display = "none";
+      labelEl.style.display = "none"; labelBg.style.display = "none";
+    });
     if (onPick) hitEl.addEventListener("click", (e) => onPick(pts[nearestIdx(e)][0]));
   }
 
@@ -514,7 +608,7 @@
       rowsHtml +=
         "<tr>" +
         "<td>" + h.date + "</td>" +
-        "<td>" + escapeHtml(h.event || "") + "</td>" +
+        '<td title="' + escapeHtml(h.event || "") + '">' + escapeHtml(shortEvent(h.event)) + "</td>" +
         "<td>#" + h.no + " " + escapeHtml(h.phase || "") + "</td>" +
         '<td class="num">' + (h.gate != null ? h.gate : "—") + "</td>" +
         '<td class="num">' + (h.pts != null ? h.pts : "—") + "</td>" +
@@ -557,6 +651,16 @@
     if (next) next.onclick = () => { if (heatPage < pages - 1) { heatPage++; renderHeats(container, rider); } };
   }
 
+  // Net Elo change over a rider's last round, as a small coloured, arrowed badge
+  // shown next to their current Elo in the main table. null/0-history → nothing.
+  function eloDeltaBadge(d) {
+    if (d == null) return "";
+    const r = Math.round(d);
+    if (r > 0) return '<span class="elo-delta up" title="zmiana Elo w ostatniej rundzie">▲+' + r + "</span>";
+    if (r < 0) return '<span class="elo-delta down" title="zmiana Elo w ostatniej rundzie">▼' + r + "</span>"; // r carries its own minus sign
+    return '<span class="elo-delta flat" title="zmiana Elo w ostatniej rundzie">→0</span>';
+  }
+
   // One heat's Elo change as a coloured, arrowed cell. null = rider not rated
   // for this heat (e.g. a solo/void heat that never entered the engine).
   function eloCell(d) {
@@ -571,10 +675,142 @@
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
 
+  // Trim year + sponsor cruft from event names:
+  //   "2026 WWK Schwaiger & Partner FIM Speedway GP of Germany - Landshut" → "SGP of Germany - Landshut"
+  // Older names that don't follow the "…GP/Grand Prix of <Country>" pattern are left as-is.
+  // Collapse any historical event name to "SGP <miejsce>", preferring the host
+  // city/venue and falling back to the country/region. The full name stays in the
+  // cell's title=. Covers dashed modern names ("... GP of Poland - Torun"), venues
+  // ("... at Vojens Speedway Center"), Polish locatives ("... w Toruniu") and the
+  // older "<Adjective> Speedway Grand Prix" forms.
+  function shortEvent(name) {
+    if (!name) return "";
+    let s = String(name).replace(/[‒-―]/g, "-").replace(/\s+/g, " ").trim();
+
+    // Host towns — restore diacritics, fold inflections/venues to one spelling.
+    var CITY = {
+      "torun": "Toruń", "toruniu": "Toruń", "toruń": "Toruń",
+      "wroclaw": "Wrocław", "wroclawiu": "Wrocław", "wrocławiu": "Wrocław", "wrocław": "Wrocław",
+      "gorzow": "Gorzów", "gorzów": "Gorzów", "gorzowie": "Gorzów",
+      "warsaw": "Warszawa", "warszawa": "Warszawa", "warszawie": "Warszawa",
+      "lublin": "Lublin", "lublinie": "Lublin", "bydgoszcz": "Bydgoszcz",
+      "vojens": "Vojens",
+      "prague": "Praga", "pradze": "Praga", "pragueue": "Praga", "praga": "Praga",
+      "malilla": "Målilla", "målilla": "Målilla", "malilli": "Målilla", "malila": "Målilla",
+      "cardiff": "Cardiff", "riga": "Riga", "teterow": "Teterow", "landshut": "Landshut",
+      "manchester": "Manchester", "horsens": "Horsens",
+      "daugavpils": "Daugavpils", "daugavipils": "Daugavpils",
+      "krsko": "Krško", "krško": "Krško", "togliatti": "Togliatti", "terenzano": "Terenzano",
+      "stockholm": "Stockholm", "melbourne": "Melbourne", "gorican": "Goričan", "goričan": "Goričan"
+    };
+    // Cities that appear as a bare token inside a name (before "FIM ...").
+    var EMBEDDED = {
+      "Toruń": "Toruń", "Gorzów": "Gorzów", "Wrocław": "Wrocław",
+      "Warszawa": "Warszawa", "Warsaw": "Warszawa",
+      "Stockholm": "Stockholm", "Bydgoszcz": "Bydgoszcz", "Lublin": "Lublin"
+    };
+    // Venue -> host city.
+    var VENUE = {
+      "vojens speedway center": "Vojens", "stadion narodowy": "Warszawa",
+      "stadion olimpijski": "Wrocław", "stadion markéta": "Praga", "stadion marketa": "Praga",
+      "stadion matija gubca": "Krško", "motoarena toruń im. mariana rosego": "Toruń",
+      "mariana rose motoarena": "Toruń", "edward jancarz stadion": "Gorzów",
+      "millenium stadium": "Cardiff", "millennium stadium": "Cardiff", "casa arena": "Horsens",
+      "g&b arena": "Güstrow", "hz bygg arena": "Målilla", "arena am kellerholz": "Wiener Neustadt"
+    };
+    // Country / region normalisation.
+    var COUNTRY = {
+      poland: "Poland", polish: "Poland", polski: "Poland", polska: "Poland",
+      denmark: "Denmark", danish: "Denmark", danmark: "Denmark", dannmark: "Denmark", dansk: "Denmark", danii: "Denmark",
+      sweden: "Sweden", swedish: "Sweden", szwecji: "Sweden",
+      "czech republic": "Czech Republic", czech: "Czech Republic", czechia: "Czech Republic",
+      germany: "Germany", german: "Germany",
+      "great britain": "Great Britain", british: "Great Britain", britain: "Great Britain",
+      latvia: "Latvia", latvian: "Latvia", croatia: "Croatia", croatian: "Croatia",
+      slovenia: "Slovenia", slovenian: "Slovenia",
+      italy: "Italy", italian: "Italy", italia: "Italy", "włoch": "Italy",
+      australia: "Australia", australian: "Australia", australi: "Australia",
+      norway: "Norway", norwegian: "Norway", finland: "Finland", finnish: "Finland",
+      "new zealand": "New Zealand", russia: "Russia", russian: "Russia", rosji: "Russia",
+      austria: "Austria", austrian: "Austria", europe: "Europe", european: "Europe",
+      scandinavia: "Scandinavia", scandinavian: "Scandinavia", nordic: "Nordic"
+    };
+
+    function cleanPlace(t) {
+      return t.replace(/\bR\d+\b.*$/i, "").replace(/\bwielkopolski\b/i, "")
+        .replace(/\bwlkp\.?/i, "").replace(/\s+/g, " ").trim();
+    }
+    function asCity(t) { return CITY[cleanPlace(t).toLowerCase()] || null; }
+    function out(place) { return "SGP " + place; }
+
+    // 1) City after a dash: "... of Poland - Torun", "3. runda Grand Prix - Wrocław".
+    var dash = s.match(/-\s*([^-]+)$/);
+    if (dash) { var c1 = asCity(dash[1]); if (c1) return out(c1); }
+
+    // 2) Venue: "... Speedway Grand Prix at <venue>".
+    var at = s.match(/\bat\s+(.+)$/i);
+    if (at) {
+      var key = at[1].toLowerCase().trim();
+      if (VENUE[key]) return out(VENUE[key]);
+      var c2 = asCity(at[1]); if (c2) return out(c2);
+    }
+
+    // 3) Locative city: Polish "w/we <miasto>" or English "in <city>".
+    var loc = s.match(/\b(?:w|we|in)\s+(.+?)\s*$/i);
+    if (loc) { var c3 = asCity(loc[1]); if (c3) return out(c3); }
+
+    // 4) Embedded host city anywhere in the name.
+    for (var token in EMBEDDED) {
+      if (new RegExp("(^|\\s)" + token + "(\\s|$)", "u").test(s)) return out(EMBEDDED[token]);
+    }
+
+    // 5) "... of <Country>".
+    var of = s.match(/\bof\s+(?:the\s+)?([A-Za-zÀ-ž ]+?)\s*$/i);
+    if (of) { var co = COUNTRY[of[1].trim().toLowerCase()]; if (co) return out(co); }
+
+    // 6) National adjective / region token anywhere (longest key first).
+    var keys = Object.keys(COUNTRY).sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < keys.length; i++) {
+      if (new RegExp("(^|\\s)" + keys[i] + "(\\s|$)", "i").test(s)) return out(COUNTRY[keys[i]]);
+    }
+
+    // 7) Fallback: strip boilerplate, return whatever remains (or the raw name).
+    var rest = s.replace(/^\d{4}\s+/, "")
+      .replace(/\bFIM\b|\bSpeedway\b|\bGrand Prix\b|\bSGP\b|\bGP\b|\bof\b|\brunda\b|\d+\.?/gi, " ")
+      .replace(/\s+/g, " ").trim();
+    return rest ? "SGP " + rest : s;
+  }
+
   $("filter").addEventListener("input", render);
-  $("min50").addEventListener("change", render);
-  $("time").addEventListener("input", (e) => { idx = +e.target.value; rebuild(); });
-  $("latest").addEventListener("click", () => { idx = dates.length - 1; $("time").value = idx; rebuild(); });
+  // Restore the saved active-window (falls back to the HTML default of 15).
+  {
+    const saved = parseInt(localStorage.getItem(ACTIVE_ROUNDS_KEY), 10);
+    if (Number.isFinite(saved) && saved > 0) $("activeRounds").value = saved;
+  }
+  // Retune the "active" window: persist the value and recompute row activity.
+  $("activeRounds").addEventListener("input", () => {
+    localStorage.setItem(ACTIVE_ROUNDS_KEY, activeRounds());
+    if (dates.length) rebuild();   // rebuild recomputes each row's `active` flag
+  });
+  // Show/hide inactive riders (default hidden). Persisted like the active-window.
+  const SHOW_INACTIVE_KEY = "sgp.showInactive";
+  $("showInactive").checked = localStorage.getItem(SHOW_INACTIVE_KEY) !== "0";
+  $("showInactive").addEventListener("change", () => {
+    localStorage.setItem(SHOW_INACTIVE_KEY, $("showInactive").checked ? "1" : "0");
+    render();
+  });
+  $("time").addEventListener("input", (e) => {
+    idx = +e.target.value;
+    // Keep the open rider's heat filter locked to the date shown on the chart (cleared at
+    // the latest date, so you see their full history there).
+    if (openRider) { heatFrom = heatTo = isLatest() ? null : riderAsOfDate(openRider); heatPage = 0; }
+    rebuild();
+  });
+  $("latest").addEventListener("click", () => {
+    idx = dates.length - 1; $("time").value = idx;
+    if (openRider) { heatFrom = heatTo = null; heatPage = 0; }   // back to full history
+    rebuild();
+  });
 
   // Mobile sort control — column headers are hidden in the card layout, so mirror the
   // sortable columns into a <select>. Selecting a column sorts by it (numeric cols default
