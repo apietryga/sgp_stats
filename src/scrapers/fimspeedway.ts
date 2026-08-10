@@ -461,6 +461,15 @@ export async function scrapeOfficial(dbPath?: string): Promise<ScrapeStats> {
       const source_url = `https://fimspeedway.com/results/${r?.slug ?? ""}`;
       const parsed = extractRoundFromApi(r, { season: year, round: 0, source_url });
       const standings = extractRoundStandings(r);
+      if (!parsed && standings.length && process.env.SGP_DEBUG_SCRAPE === "1") {
+        // Temporary diagnostic for the 2026-08 regression: a round has a
+        // classification but extractRoundFromApi found no heats — dump the
+        // shape of round.races so we can see what changed.
+        console.log(
+          `  [debug] ${year} ${r?.slug}: races=${Array.isArray(r?.races) ? r.races.length : typeof r?.races} ` +
+            `raceSample=${JSON.stringify(r?.races?.[0] ?? null).slice(0, 1200)}`,
+        );
+      }
       if (!parsed && !standings.length) continue; // future/empty round
       roundNo++;
       if (parsed) {
