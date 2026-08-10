@@ -464,10 +464,15 @@ export async function scrapeOfficial(dbPath?: string): Promise<ScrapeStats> {
       if (!parsed && standings.length && process.env.SGP_DEBUG_SCRAPE === "1") {
         // Temporary diagnostic for the 2026-08 regression: a round has a
         // classification but extractRoundFromApi found no heats — dump the
-        // shape of round.races so we can see what changed.
+        // shape of an actual scoring race (not practice) plus the round-level
+        // classification, to see what changed.
+        const races: any[] = Array.isArray(r?.races) ? r.races : [];
+        const scoring = races.find((race) => phaseFromTags(race?.tags));
         console.log(
-          `  [debug] ${year} ${r?.slug}: races=${Array.isArray(r?.races) ? r.races.length : typeof r?.races} ` +
-            `raceSample=${JSON.stringify(r?.races?.[0] ?? null).slice(0, 1200)}`,
+          `  [debug] ${year} ${r?.slug}: races=${races.length} scoring=${!!scoring} ` +
+            `scoringSample=${JSON.stringify(scoring ?? null).slice(0, 1500)} ` +
+            `roundResultsKeys=${JSON.stringify(Object.keys(r?.results?.[0] ?? {}))} ` +
+            `roundResultsSample=${JSON.stringify(r?.results?.[0] ?? null).slice(0, 800)}`,
         );
       }
       if (!parsed && !standings.length) continue; // future/empty round
