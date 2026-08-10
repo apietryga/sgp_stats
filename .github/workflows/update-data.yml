@@ -9,6 +9,12 @@ on:
     # up new results the morning after. Runs year-round harmlessly: off-season
     # runs produce no diff, so nothing is committed.
     - cron: "0 6 * * SUN"
+  # Every push to main also re-runs the pipeline, so a code change (e.g. this
+  # workflow's own fixes) picks up whatever's newest on fimspeedway right
+  # away instead of waiting for Sunday. Guarded below against the bot's own
+  # data-refresh commits to avoid a push -> commit -> push loop.
+  push:
+    branches: [main]
   # Manual on-demand trigger (the "button"): Actions tab → Run workflow, or
   # `gh workflow run update-data.yml`. No token embedded anywhere.
   workflow_dispatch: {}
@@ -24,6 +30,11 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Skip runs triggered by the bot's own data-refresh commit — otherwise
+    # every push-triggered commit would immediately trigger another run.
+    if: >-
+      github.event_name != 'push' ||
+      !startsWith(github.event.head_commit.message, 'chore(data): scheduled refresh')
     steps:
       - uses: actions/checkout@v4
 
