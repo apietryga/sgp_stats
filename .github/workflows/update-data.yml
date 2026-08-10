@@ -51,8 +51,25 @@ jobs:
 
       - name: Run full pipeline (rebuild data + site)
         # Network steps (scrape:official, scrape:wiki) are best-effort inside
-        # pipeline.ts; a source being down does not fail the job.
+        # pipeline.ts; a source being down does not fail the job. build:site's
+        # regression guard (src/build_site.ts) can still fail the job on
+        # purpose if the result would publish less than what's already live —
+        # see the debug-raw-scrape-payloads artifact below when that happens.
         run: bun run all
+
+      - name: Upload raw scrape payloads for debugging (only on failure)
+        # The regression guard exists precisely because scrape:official can
+        # come back structurally valid but empty of heats for a season (seen
+        # for 2026 while it's in progress). Nothing here has network access
+        # to fimspeedway.com outside CI, so save what this run actually
+        # fetched — data/raw/*.json — to inspect the real API shape offline.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-raw-scrape-payloads
+          path: data/raw/*.json
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Commit & push updated data (only if changed)
         run: |
