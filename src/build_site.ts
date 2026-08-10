@@ -279,6 +279,37 @@ async function buildHeatData(
 
   db.close();
 
+  // A season vanishing entirely (heats=0 for a season that previously had
+  // data) doesn't always show up as a global last_event regression — e.g. a
+  // mid-career season disappearing while a newer season gains a round. Guard
+  // against it the same way as assertNoRegression: don't publish over a
+  // season we've already reported unless every previously-covered season is
+  // still covered (or the escape hatch is set for a deliberate correction).
+  if (process.env.ALLOW_DATA_REGRESSION !== "1") {
+    const prevIdxPath = resolve(SITE_HEATS, "index.json");
+    if (existsSync(prevIdxPath)) {
+      try {
+        const prevIndex = JSON.parse(readFileSync(prevIdxPath, "utf8"));
+        const prevSeasons: number[] = Array.isArray(prevIndex?.seasons)
+          ? prevIndex.seasons.map((s: any) => s.season)
+          : [];
+        const coveredSet = new Set(covered);
+        const dropped = prevSeasons.filter((s) => !coveredSet.has(s));
+        if (dropped.length) {
+          throw new Error(
+            `build:site regression guard: season(s) ${dropped.join(", ")} would drop out of ` +
+              `heats/index.json entirely. A data source likely failed or returned partial ` +
+              `results this run. Refusing to publish over already-correct data. ` +
+              `Set ALLOW_DATA_REGRESSION=1 if this is an intentional correction.`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("build:site regression guard")) throw e;
+        // malformed previous index — nothing sound to compare against
+      }
+    }
+  }
+
   const index = {
     built_at: new Date().toISOString(),
     seasons: seasonMeta,
@@ -300,8 +331,14 @@ async function buildHeatData(
  * with no scrape) or the season lists nothing later — the site then just shows
  * the last-updated date and relies on the weekly cron for refresh.
  */
-function readNextEventDate(lastEvent: string | null): string | null {
+export function readNextEventDate(lastEvent: string | null): string | null {
   const year = lastEvent ? Number(lastEvent.slice(0, 4)) : new Date().getFullYear();
+  // A round dated in the past can still show up here if our own heat ingestion
+  // fell behind the published schedule (e.g. a scrape came back partial/empty
+  // for the current season) — that round already happened, it just isn't in
+  // our data yet. Reporting it as "next" would be actively wrong, so floor the
+  // candidate at today: better to show nothing than a stale date.
+  const todayISO = new Date().toISOString().slice(0, 10);
   // Check the last-event season first, then the next year (a January build may
   // already have next season's schedule but no races yet).
   for (const y of [year, year + 1]) {
@@ -314,13 +351,68 @@ function readNextEventDate(lastEvent: string | null): string | null {
         .map((r: any) => (typeof r?.startsAt === "string" ? r.startsAt.slice(0, 10) : null))
         .filter((d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d))
         .sort();
-      const next = dates.find((d: string) => !lastEvent || d > lastEvent);
+      const next = dates.find((d: string) => (!lastEvent || d > lastEvent) && d >= todayISO);
       if (next) return next;
     } catch {
       /* malformed raw payload — fall through to null */
     }
   }
   return null;
+}
+
+/**
+ * scrape:official / scrape:wiki are best-effort (pipeline.ts): a season that
+ * fails or comes back partial does not stop the pipeline, it just leaves the
+ * DB with less data than before (the DB itself is rebuilt from scratch every
+ * run — see data/*.db in .gitignore). Left unchecked, that silently publishes
+ * a regression over already-correct data (this happened 2026-08-09: the
+ * 2026 season's heats went missing from a single run and got published,
+ * even though fimspeedway's schedule for 2026 was still fetched fine).
+ *
+ * Guard against that class of bug here: compare what we're about to publish
+ * against what's already published (docs/data/*.json, tracked in git) and
+ * refuse to overwrite it with something that goes backwards. This makes
+ * `bun run build:site` — a critical pipeline step — fail loudly instead, so
+ * the CI job fails and nothing gets committed. Set ALLOW_DATA_REGRESSION=1
+ * to bypass for a deliberate correction (e.g. removing a bad date).
+ */
+export function assertNoRegression(lastEvent: string | null, dateCount: number): void {
+  if (process.env.ALLOW_DATA_REGRESSION === "1") {
+    console.warn("  (ALLOW_DATA_REGRESSION=1 set — skipping regression guard)");
+    return;
+  }
+  const prevStatusPath = resolve(SITE_DATA, "status.json");
+  const prevHistoryPath = resolve(SITE_DATA, "history.json");
+  if (!existsSync(prevStatusPath) || !existsSync(prevHistoryPath)) return; // first build
+
+  let prevLastEvent: string | null = null;
+  let prevDateCount = 0;
+  try {
+    prevLastEvent = JSON.parse(readFileSync(prevStatusPath, "utf8"))?.last_event ?? null;
+    const prevHistory = JSON.parse(readFileSync(prevHistoryPath, "utf8"));
+    prevDateCount = Array.isArray(prevHistory?.dates) ? prevHistory.dates.length : 0;
+  } catch {
+    return; // malformed previous file — nothing sound to compare against
+  }
+
+  if (prevLastEvent && (!lastEvent || lastEvent < prevLastEvent)) {
+    throw new Error(
+      `build:site regression guard: last_event would go backwards ` +
+        `(${prevLastEvent} -> ${lastEvent ?? "null"}). A data source likely failed ` +
+        `or returned partial results this run (check scrape:official / scrape:wiki ` +
+        `logs above). Refusing to publish over already-correct data. ` +
+        `Set ALLOW_DATA_REGRESSION=1 if this is an intentional correction.`,
+    );
+  }
+  if (dateCount < prevDateCount) {
+    throw new Error(
+      `build:site regression guard: history.dates would shrink ` +
+        `(${prevDateCount} -> ${dateCount} dates). A data source likely failed ` +
+        `or returned partial results this run (check scrape:official / scrape:wiki ` +
+        `logs above). Refusing to publish over already-correct data. ` +
+        `Set ALLOW_DATA_REGRESSION=1 if this is an intentional correction.`,
+    );
+  }
 }
 
 async function main(): Promise<void> {
@@ -389,6 +481,7 @@ async function main(): Promise<void> {
 
   // --- status.json : when the data was last refreshed + next round ----------
   const lastEvent = dates.length ? dates[dates.length - 1]! : null;
+  assertNoRegression(lastEvent, dates.length);
   const status = {
     built_at: new Date().toISOString(),
     last_event: lastEvent,
