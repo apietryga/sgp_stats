@@ -52,15 +52,16 @@ jobs:
       # TODO(temporary): investigating a Playwright DOM-render fallback for
       # scrape:official, since fimspeedway's season API no longer embeds
       # per-race results for the in-progress 2026 season (see PR #6/#7).
-      # scripts/probe_fim.ts logs every JSON XHR the results page makes while
-      # loading, to find the real per-race results endpoint or confirm the
-      # rendered DOM is the only way to get it. Remove once the fallback is
-      # implemented (or the approach is abandoned).
+      # scripts/probe_fim.ts (round 1) found zero JSON XHRs while the results
+      # page loads, so probe_fim_dom.ts (round 2) dumps the rendered page
+      # instead — __NEXT_DATA__ contents and body text — to find out whether
+      # the data is server-rendered into the HTML. Remove once the fallback
+      # is implemented (or the approach is abandoned).
       - name: Install Playwright chromium (temporary, for probe)
         run: bunx playwright install --with-deps chromium
 
-      - name: Probe a 2026 round results page with Playwright (temporary)
-        run: bun run scripts/probe_fim.ts "https://fimspeedway.com/results/2026-dewalt-fim-speedway-gp-of-latvia-riga"
+      - name: Probe a 2026 round results page's rendered DOM (temporary)
+        run: bun run scripts/probe_fim_dom.ts "https://fimspeedway.com/results/2026-dewalt-fim-speedway-gp-of-latvia-riga"
 
       - name: Run full pipeline (rebuild data + site)
         # Network steps (scrape:official, scrape:wiki) are best-effort inside
