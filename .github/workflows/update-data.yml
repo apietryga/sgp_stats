@@ -49,22 +49,6 @@ jobs:
       - name: Install JS deps
         run: bun install --frozen-lockfile
 
-      # TODO(temporary): investigating a fallback for scrape:official, since
-      # fimspeedway's season API no longer embeds per-race results for the
-      # in-progress 2026 season (see PR #6/#7). Round 2 (probe_fim_dom.ts)
-      # found the per-round results page DOES embed full heat data (rankings,
-      # colorId, rider names) in its __NEXT_DATA__ script tag. Round 3
-      # (probe_fim_nextdata.ts) checks whether a plain fetch already returns
-      # it (no browser needed) and dumps the exact JSON shape under
-      # pageProps, to see if it matches the already-written but unused
-      # extractRound()/parseNextData() in fimspeedway.ts. Remove once the
-      # fallback is implemented (or the approach is abandoned).
-      - name: Install Playwright chromium (temporary, for probe)
-        run: bunx playwright install --with-deps chromium
-
-      - name: Probe a 2026 round results page's __NEXT_DATA__ (temporary)
-        run: bun run scripts/probe_fim_nextdata.ts "https://fimspeedway.com/results/2026-dewalt-fim-speedway-gp-of-latvia-riga"
-
       - name: Run full pipeline (rebuild data + site)
         # Network steps (scrape:official, scrape:wiki) are best-effort inside
         # pipeline.ts; a source being down does not fail the job. build:site's

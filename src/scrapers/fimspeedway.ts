@@ -1,27 +1,26 @@
 /**
  * Official source adapter: fimspeedway.com (the SGP's own results service).
  *
- * IMPORTANT — what the live site actually exposes (probed 2026-06):
- *   fimspeedway.com is a Next.js *pages-router* app. Its <script id="__NEXT_DATA__">
- *   payload contains ONLY the championship + the list of seasons; it carries NO
- *   heat-by-heat data. The round results are fetched client-side from a separate
- *   GraphQL backend (https://eventrack.io/sgp/graphql) behind a bearer token that
- *   is embedded in the JS bundle. `/_next/data/{buildId}/sgp/results.json` returns 404.
- *
- * Consequences for the prompt's fetch ladder:
- *   1) __NEXT_DATA__  -> yields seasons (see extractSeasons), but NOT heats.
- *   2) RSC __next_f   -> N/A (this is pages-router, not app-router).
- *   3) _next/data     -> 404.
- *   4) a real backend -> required to obtain heats. Two options, both pluggable
- *      via the RoundFetcher interface below:
- *        - Playwright DOM render of the public round page (sanctioned fallback);
- *        - the eventrack GraphQL API (needs an explicitly-authorized token).
- *
- * This module therefore separates the *network* (RoundFetcher, swap in later)
- * from the *parsing/mapping* (parseNextData / extractSeasons / extractRound),
- * which are fully implemented and unit-tested against a saved fixture. Until a
- * fetcher backend is wired in, scrape:official records that no heats are
- * available and exits cleanly so the rest of the pipeline still runs.
+ * Two data sources, both plain fetches (no browser/JS execution needed):
+ *   1) `/api/results?seasonId=X&championshipId=3` (fetchSeason) — the whole
+ *      season in one call, including every round's races[] and its overall
+ *      classification (round.results[0].rankings). For CLOSED seasons this
+ *      embeds full per-race results too. For the season currently in
+ *      progress it doesn't: each race object only carries `resultsCount`,
+ *      not `results` (probably to keep the season-wide payload small while
+ *      it's still changing week to week) — so extractRoundFromApi finds 0
+ *      heats for those rounds even though a classification exists.
+ *   2) `/results/{round.slug}` (fetchRoundPage) — a single round's own
+ *      results page. Its <script id="__NEXT_DATA__"> embeds
+ *      pageProps.round, which — unlike the season payload's races[] — DOES
+ *      carry full results for every race, live season or not (confirmed
+ *      2026-08-10: same race id, resultsCount-only in (1), full
+ *      results[0].rankings in (2)). Used as a per-round fallback only when
+ *      (1) comes back with a classification but no parsed heats, since
+ *      fetching every round individually just to get what (1) already gives
+ *      for free would be wasteful.
+ *   pageProps.round's races[] has the identical shape extractRoundFromApi
+ *   already parses, so both sources share the same mapper.
  */
 import type { Database } from "bun:sqlite";
 import { openDb, upsertEvent, upsertHeat, clearEventHeats } from "../db.ts";
@@ -290,25 +289,28 @@ export function extractRoundStandings(round: any): RoundStanding[] {
   return out;
 }
 
-// --- Network (pluggable; deferred until a backend is authorized) ------------
+// --- Per-round fallback (live season only; see the module docstring) --------
 
-export class OfficialDataUnavailable extends Error {
-  constructor(detail: string) {
-    super(
-      `fimspeedway heats unavailable: ${detail}\n` +
-        `The live site keeps heat data in a GraphQL backend, not in __NEXT_DATA__.\n` +
-        `Wire a RoundFetcher backend (Playwright DOM render, or an authorized API token) ` +
-        `into scrape:official to enable official ingestion.`,
-    );
-    this.name = "OfficialDataUnavailable";
+/**
+ * Fetch a single round's own results page and return its `pageProps.round`
+ * (same races[]/results[] shape fetchSeason's rounds have, just complete).
+ * Plain fetch — the page is server-rendered, __NEXT_DATA__ is present in the
+ * initial HTML, no browser needed. Returns null on any failure so a flaky
+ * fetch just leaves that round without heats rather than aborting the season.
+ */
+async function fetchRoundPage(slug: string): Promise<any | null> {
+  if (!slug) return null;
+  try {
+    const res = await politeFetch(`https://fimspeedway.com/results/${slug}`, 2500, {
+      Accept: "text/html",
+    });
+    if (!res.ok) return null;
+    const nextData = parseNextData(await res.text());
+    return nextData?.props?.pageProps?.round ?? null;
+  } catch {
+    return null;
   }
 }
-
-/** A backend that returns the raw payload for one round, plus its source URL. */
-export type RoundFetcher = (
-  season: number,
-  round: number,
-) => Promise<{ payload: unknown; url: string } | null>;
 
 // --- DB ingestion of official rounds (into the 'fimspeedway' source slot) ----
 
@@ -457,10 +459,24 @@ export async function scrapeOfficial(dbPath?: string): Promise<ScrapeStats> {
     let roundNo = 0;
     let scoredRounds = 0;
     let standingsRounds = 0;
+    let fallbackRounds = 0;
     for (const r of rounds) {
       const source_url = `https://fimspeedway.com/results/${r?.slug ?? ""}`;
-      const parsed = extractRoundFromApi(r, { season: year, round: 0, source_url });
+      let parsed = extractRoundFromApi(r, { season: year, round: 0, source_url });
       const standings = extractRoundStandings(r);
+      if (!parsed && standings.length && r?.slug) {
+        // The season payload has a classification for this round but no
+        // parsed heats — likely the live-season resultsCount-only gap (see
+        // module docstring). The round's own page has full results.
+        const roundPage = await fetchRoundPage(r.slug);
+        if (roundPage) {
+          const viaPage = extractRoundFromApi(roundPage, { season: year, round: 0, source_url });
+          if (viaPage) {
+            parsed = viaPage;
+            fallbackRounds++;
+          }
+        }
+      }
       if (!parsed && !standings.length) continue; // future/empty round
       roundNo++;
       if (parsed) {
@@ -478,7 +494,8 @@ export async function scrapeOfficial(dbPath?: string): Promise<ScrapeStats> {
     }
     stats.seasons++;
     console.log(
-      `  ${year}: ${scoredRounds} round(s) with heats, ${standingsRounds} with official classification`,
+      `  ${year}: ${scoredRounds} round(s) with heats, ${standingsRounds} with official classification` +
+        (fallbackRounds ? ` (${fallbackRounds} via per-round page fallback)` : ""),
     );
   }
   db.close();
