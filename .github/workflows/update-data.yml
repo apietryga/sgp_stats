@@ -55,6 +55,12 @@ jobs:
         # regression guard (src/build_site.ts) can still fail the job on
         # purpose if the result would publish less than what's already live —
         # see the debug-raw-scrape-payloads artifact below when that happens.
+        # TODO(temporary): SGP_DEBUG_SCRAPE prints the shape of a round with a
+        # classification but no parsed heats, to diagnose the 2026 season gap
+        # from job logs directly (no network access to fimspeedway.com from
+        # the debugging session). Remove once the scraper is fixed.
+        env:
+          SGP_DEBUG_SCRAPE: "1"
         run: bun run all
 
       - name: Upload raw scrape payloads for debugging (only on failure)
